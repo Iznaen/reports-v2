@@ -13,9 +13,27 @@ val tauriProperties = Properties().apply {
     }
 }
 
+val keystoreProperties = Properties().apply {
+    val propFile = file("../keystore.properties")
+    if (propFile.exists()) {
+        propFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     compileSdk = 36
     namespace = "com.reports.v2.app"
+    
+    signingConfigs {
+        create("release") {
+            if (file("../keystore.properties").exists()) {
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "com.reports.v2.app"
@@ -37,6 +55,7 @@ android {
             }
         }
         getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

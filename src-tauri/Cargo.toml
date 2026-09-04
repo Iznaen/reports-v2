@@ -13,6 +13,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+chrono = { version = "0.4.45", features = ["serde"] }
+tauri-plugin-fs = "2.0.0-rc.6"
 
 [lib]
 name = "reports_v2_lib"
