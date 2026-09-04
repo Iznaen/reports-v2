@@ -4,7 +4,7 @@ use rusqlite::Connection;
 use crate::models::OfficeLocation;
 
 #[command]
-pub fn get_locations(db: State<'_, Mutex<Connection>>) -> Result<Vec<OfficeLocation>, String> {
+pub async fn get_locations(db: State<'_, Mutex<Connection>>) -> Result<Vec<OfficeLocation>, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare("SELECT id, name, latitude, longitude, radius_meters, is_active FROM office_locations")
         .map_err(|e| e.to_string())?;
@@ -29,7 +29,7 @@ pub fn get_locations(db: State<'_, Mutex<Connection>>) -> Result<Vec<OfficeLocat
 }
 
 #[command]
-pub fn add_location(location: OfficeLocation, db: State<'_, Mutex<Connection>>) -> Result<i64, String> {
+pub async fn add_location(location: OfficeLocation, db: State<'_, Mutex<Connection>>) -> Result<i64, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO office_locations (name, latitude, longitude, radius_meters, is_active)

@@ -20,6 +20,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::profile::save_profile,
             commands::profile::get_profile,
+            commands::profile::save_signature,
             commands::locations::get_locations,
             commands::locations::add_location
         ])

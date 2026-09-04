@@ -4,7 +4,7 @@ use rusqlite::{Connection, OptionalExtension};
 use crate::models::EmployeeProfile;
 
 #[command]
-pub fn save_profile(profile: EmployeeProfile, db: State<'_, Mutex<Connection>>) -> Result<(), String> {
+pub async fn save_profile(profile: EmployeeProfile, db: State<'_, Mutex<Connection>>) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     
     // We only store one profile, assume id=1
@@ -20,7 +20,7 @@ pub fn save_profile(profile: EmployeeProfile, db: State<'_, Mutex<Connection>>) 
 }
 
 #[command]
-pub fn get_profile(db: State<'_, Mutex<Connection>>) -> Result<Option<EmployeeProfile>, String> {
+pub async fn get_profile(db: State<'_, Mutex<Connection>>) -> Result<Option<EmployeeProfile>, String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare("SELECT id, name, ni, position, work_unit FROM employee_profile WHERE id=1")
         .map_err(|e| e.to_string())?;
@@ -36,4 +36,32 @@ pub fn get_profile(db: State<'_, Mutex<Connection>>) -> Result<Option<EmployeePr
     }).optional().map_err(|e| format!("Failed to fetch profile: {}", e))?;
 
     Ok(profile)
+}
+
+#[command]
+pub async fn save_signature(app: tauri::AppHandle, base64_data: String) -> Result<(), String> {
+    use tauri::Manager;
+    use std::fs;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    // Strip the "data:image/png;base64," prefix if it exists
+    let b64 = if let Some(stripped) = base64_data.strip_prefix("data:image/png;base64,") {
+        stripped
+    } else {
+        &base64_data
+    };
+
+    let decoded = STANDARD.decode(b64).map_err(|e| format!("Invalid base64: {}", e))?;
+
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let sig_dir = app_data_dir.join("signatures");
+    
+    if !sig_dir.exists() {
+        fs::create_dir_all(&sig_dir).map_err(|e| e.to_string())?;
+    }
+
+    let sig_file = sig_dir.join("signature.png");
+    fs::write(&sig_file, decoded).map_err(|e| format!("Failed to write signature file: {}", e))?;
+
+    Ok(())
 }

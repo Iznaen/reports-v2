@@ -83,5 +83,25 @@ pub fn init_db(app_handle: &AppHandle) -> Result<Connection, String> {
         "
     ).map_err(|e| format!("Failed to create database tables: {}", e))?;
 
+    // Pre-populate with a default hardcoded office location if empty
+    // YOU CAN EDIT THESE COORDINATES LATER
+    let default_name = "Kantor Pusat";
+    let default_lat = -6.200000; // Default Jakarta Latitude
+    let default_lng = 106.816666; // Default Jakarta Longitude
+    
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM office_locations",
+        [],
+        |row| row.get(0)
+    ).unwrap_or(0);
+
+    if count == 0 {
+        conn.execute(
+            "INSERT INTO office_locations (name, latitude, longitude, radius_meters, is_active)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            (default_name, default_lat, default_lng, 70.0, 1)
+        ).map_err(|e| format!("Failed to insert default location: {}", e))?;
+    }
+
     Ok(conn)
 }

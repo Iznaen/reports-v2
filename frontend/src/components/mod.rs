@@ -1,2 +1,1 @@
-pub mod camera_preview;
-pub mod signature_pad;
+pub mod signature_pad; pub mod map;
