@@ -13,6 +13,9 @@
 .env.*
 *.secret
 credentials.json
+keystore.properties
+key.properties
+local.properties
 
 # Keys & Signing Certificates
 *.key

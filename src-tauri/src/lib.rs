@@ -25,7 +25,10 @@ pub fn run() {
             commands::locations::get_locations,
             commands::locations::add_location,
             commands::locations::update_location_name,
-            commands::locations::delete_location
+            commands::locations::delete_location,
+            commands::attendance::get_today_attendance,
+            commands::attendance::clock_in,
+            commands::attendance::clock_out
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

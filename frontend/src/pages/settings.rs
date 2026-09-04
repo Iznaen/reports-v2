@@ -390,7 +390,7 @@ pub fn Settings() -> impl IntoView {
                 <div style="background: white; padding: 2rem; width: 80%; max-width: 300px; border-radius: 16px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
                     <i class="fas fa-info-circle" style="font-size: 48px; color: #3b82f6; margin-bottom: 16px;"></i>
                     <h3 style="margin: 0 0 8px 0; color: #0f172a;">"Info Pengembang"</h3>
-                    <p style="margin: 0 0 24px 0; color: #64748b; font-size: 14px;">"Pengembang: Mohammad Iznaen Tanggapili"</p>
+                    <p style="margin: 0 0 24px 0; color: #64748b; font-size: 14px;">"Mohammad Iznaen Tanggapili"</p>
                     <button 
                         on:click=move |_| set_show_info_modal.set(false)
                         style="background: #1a3a5c; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; width: 100%; cursor: pointer;"
