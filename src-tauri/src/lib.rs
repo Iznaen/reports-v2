@@ -24,7 +24,8 @@ pub fn run() {
             commands::profile::get_signature,
             commands::locations::get_locations,
             commands::locations::add_location,
-            commands::locations::update_location_name
+            commands::locations::update_location_name,
+            commands::locations::delete_location
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -50,3 +50,21 @@ pub async fn update_location_name(id: i64, new_name: String, db: State<'_, Mutex
     
     Ok(())
 }
+
+#[command]
+pub async fn delete_location(id: i64, db: State<'_, Mutex<Connection>>) -> Result<(), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    
+    // Safety check: Don't delete if it's the last location
+    let count: i64 = conn.query_row("SELECT COUNT(*) FROM office_locations", [], |row| row.get(0))
+        .unwrap_or(0);
+        
+    if count <= 1 {
+        return Err("Cannot delete the last remaining location".to_string());
+    }
+
+    conn.execute("DELETE FROM office_locations WHERE id = ?1", [&id])
+        .map_err(|e| format!("Failed to delete location: {}", e))?;
+    
+    Ok(())
+}

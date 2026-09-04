@@ -255,9 +255,39 @@ pub fn Settings() -> impl IntoView {
                                             }.into_any()
                                         }
                                     }}
-                                    <span style=move || if loc_is_active { "background: #e0f2fe; color: #0284c7; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" } else { "background: #f1f5f9; color: #64748b; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" }>
-                                        {if loc_is_active { "Aktif" } else { "Inaktif" }}
-                                    </span>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <span style=move || if loc_is_active { "background: #e0f2fe; color: #0284c7; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" } else { "background: #f1f5f9; color: #64748b; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" }>
+                                            {if loc_is_active { "Aktif" } else { "Inaktif" }}
+                                        </span>
+                                        {move || {
+                                            if locations.get().len() > 1 {
+                                                view! {
+                                                    <i 
+                                                        class="fas fa-trash-alt" 
+                                                        style="color: #ef4444; font-size: 14px; cursor: pointer; padding: 4px;"
+                                                        on:click=move |_| {
+                                                            let id = loc_id;
+                                                            wasm_bindgen_futures::spawn_local(async move {
+                                                                #[derive(serde::Serialize)]
+                                                                #[serde(rename_all = "camelCase")]
+                                                                struct Args { id: i64 }
+                                                                let args = to_value(&Args { id }).unwrap();
+                                                                invoke("delete_location", args).await;
+                                                                
+                                                                if let Ok(l_res) = invoke("get_locations", JsValue::NULL).await.dyn_into::<JsValue>() {
+                                                                    if let Ok(l) = from_value::<Vec<OfficeLocation>>(l_res) {
+                                                                        set_locations.set(l);
+                                                                    }
+                                                                }
+                                                            });
+                                                        }
+                                                    ></i>
+                                                }.into_any()
+                                            } else {
+                                                view! { <span></span> }.into_any()
+                                            }
+                                        }}
+                                    </div>
                                 </div>
                             }
                         }).collect_view()}
