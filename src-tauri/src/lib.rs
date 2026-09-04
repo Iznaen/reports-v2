@@ -21,6 +21,7 @@ pub fn run() {
             commands::profile::save_profile,
             commands::profile::get_profile,
             commands::profile::save_signature,
+            commands::profile::get_signature,
             commands::locations::get_locations,
             commands::locations::add_location
         ])

@@ -33,7 +33,7 @@ fn AppLayout() -> impl IntoView {
                     href="/"
                     style="display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #1a3a5c;"
                 >
-                    <span style="font-size: 20px;">"🏠"</span>
+                    <i class="fas fa-home" style="font-size: 20px;"></i>
                     <span style="font-size: 12px; font-weight: 600;">"Beranda"</span>
                 </a>
                 
@@ -41,7 +41,7 @@ fn AppLayout() -> impl IntoView {
                     href="/settings"
                     style="display: flex; flex-direction: column; align-items: center; gap: 4px; text-decoration: none; color: #1a3a5c;"
                 >
-                    <span style="font-size: 20px;">"⚙️"</span>
+                    <i class="fas fa-cog" style="font-size: 20px;"></i>
                     <span style="font-size: 12px; font-weight: 600;">"Pengaturan"</span>
                 </a>
             </nav>

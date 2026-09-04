@@ -65,3 +65,21 @@ pub async fn save_signature(app: tauri::AppHandle, base64_data: String) -> Resul
 
     Ok(())
 }
+
+#[command]
+pub async fn get_signature(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri::Manager;
+    use std::fs;
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+
+    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let sig_file = app_data_dir.join("signatures").join("signature.png");
+    
+    if sig_file.exists() {
+        let bytes = fs::read(&sig_file).map_err(|e| format!("Failed to read signature: {}", e))?;
+        let b64 = STANDARD.encode(&bytes);
+        Ok(Some(format!("data:image/png;base64,{}", b64)))
+    } else {
+        Ok(None)
+    }
+}
