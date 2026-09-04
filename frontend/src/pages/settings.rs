@@ -31,6 +31,9 @@ struct OfficeLocation {
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+
+    #[wasm_bindgen(js_namespace = window)]
+    fn resetLeafletMap();
 }
 
 #[component]
@@ -40,6 +43,10 @@ pub fn Settings() -> impl IntoView {
     let (locations, set_locations) = signal(Vec::<OfficeLocation>::new());
     let (saved_signature, set_saved_signature) = signal::<Option<String>>(None);
     
+    // Location Editing State
+    let (editing_loc_id, set_editing_loc_id) = signal::<Option<i64>>(None);
+    let (edit_loc_name, set_edit_loc_name) = signal(String::new());
+    
     // Modals State
     let (show_password_modal, set_show_password_modal) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
@@ -48,6 +55,7 @@ pub fn Settings() -> impl IntoView {
     let (show_map, set_show_map) = signal(false);
     let (show_sig_modal, set_show_sig_modal) = signal(false);
     let (show_success_dialog, set_show_success_dialog) = signal(false);
+    let (show_info_modal, set_show_info_modal) = signal(false);
     
     // Initial load - Fetch profile and locations
     wasm_bindgen_futures::spawn_local(async move {
@@ -87,6 +95,7 @@ pub fn Settings() -> impl IntoView {
             set_password_error.set(false);
             set_password_input.set(String::new());
             set_show_map.set(true);
+            resetLeafletMap();
         } else {
             set_password_error.set(true);
         }
@@ -99,6 +108,11 @@ pub fn Settings() -> impl IntoView {
                 <h1 style="font-size: 20px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-cog"></i> "Pengaturan"
                 </h1>
+                <i 
+                    class="fas fa-info-circle" 
+                    style="font-size: 20px; color: #94a3b8; cursor: pointer;"
+                    on:click=move |_| set_show_info_modal.set(true)
+                ></i>
             </div>
             
             <div style="padding: 20px;">
@@ -167,16 +181,82 @@ pub fn Settings() -> impl IntoView {
                     </div>
                     <div style="margin-bottom: 12px;">
                         {move || locations.get().into_iter().map(|loc| {
+                            let loc_id = loc.id;
+                            let loc_name = loc.name.clone();
+                            let loc_is_active = loc.is_active;
+                            let loc_clone = loc.clone();
+                            
                             view! {
                                 <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
-                                    <div>
-                                        <div style="font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 2px;">{loc.name}</div>
-                                        <div style="font-size: 12px; color: #64748b;">
-                                            {format!("{}, {} • Radius {}m", loc.latitude, loc.longitude, loc.radius_meters)}
-                                        </div>
-                                    </div>
-                                    <span style=move || if loc.is_active { "background: #e0f2fe; color: #0284c7; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" } else { "background: #f1f5f9; color: #64748b; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" }>
-                                        {if loc.is_active { "Aktif" } else { "Inaktif" }}
+                                    {move || {
+                                        if editing_loc_id.get() == Some(loc_id) {
+                                            view! {
+                                                <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; margin-right: 12px;">
+                                                    <div style="display: flex; gap: 4px;">
+                                                        <input 
+                                                            type="text" 
+                                                            prop:value=edit_loc_name.get()
+                                                            on:input=move |e| set_edit_loc_name.set(event_target_value(&e))
+                                                            style="flex: 1; padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 14px;"
+                                                        />
+                                                        <button 
+                                                            style="background: #16a34a; color: white; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer;"
+                                                            on:click=move |_| {
+                                                                let new_name = edit_loc_name.get();
+                                                                let id = loc_id;
+                                                                wasm_bindgen_futures::spawn_local(async move {
+                                                                    #[derive(serde::Serialize)]
+                                                                    #[serde(rename_all = "camelCase")]
+                                                                    struct Args { id: i64, new_name: String }
+                                                                    let args = to_value(&Args { id, new_name }).unwrap();
+                                                                    invoke("update_location_name", args).await;
+                                                                    
+                                                                    set_editing_loc_id.set(None);
+                                                                    if let Ok(l_res) = invoke("get_locations", JsValue::NULL).await.dyn_into::<JsValue>() {
+                                                                        if let Ok(l) = from_value::<Vec<OfficeLocation>>(l_res) {
+                                                                            set_locations.set(l);
+                                                                        }
+                                                                    }
+                                                                });
+                                                            }
+                                                        >
+                                                            <i class="fas fa-check"></i>
+                                                        </button>
+                                                        <button 
+                                                            style="background: #ef4444; color: white; border: none; border-radius: 4px; padding: 4px 10px; cursor: pointer;"
+                                                            on:click=move |_| set_editing_loc_id.set(None)
+                                                        >
+                                                            <i class="fas fa-times"></i>
+                                                        </button>
+                                                    </div>
+                                                    <div style="font-size: 12px; color: #64748b;">
+                                                        {format!("{}, {} • Radius {}m", loc_clone.latitude, loc_clone.longitude, loc_clone.radius_meters)}
+                                                    </div>
+                                                </div>
+                                            }.into_any()
+                                        } else {
+                                            let name_for_edit = loc_name.clone();
+                                            view! {
+                                                <div style="flex: 1;">
+                                                    <div style="font-weight: 600; font-size: 14px; color: #0f172a; margin-bottom: 2px; display: flex; align-items: center; gap: 8px;">
+                                                        {loc_name.clone()}
+                                                        <i class="fas fa-pen" 
+                                                           style="color: #94a3b8; font-size: 12px; cursor: pointer; padding: 2px;"
+                                                           on:click=move |_| {
+                                                               set_edit_loc_name.set(name_for_edit.clone());
+                                                               set_editing_loc_id.set(Some(loc_id));
+                                                           }
+                                                        ></i>
+                                                    </div>
+                                                    <div style="font-size: 12px; color: #64748b;">
+                                                        {format!("{}, {} • Radius {}m", loc_clone.latitude, loc_clone.longitude, loc_clone.radius_meters)}
+                                                    </div>
+                                                </div>
+                                            }.into_any()
+                                        }
+                                    }}
+                                    <span style=move || if loc_is_active { "background: #e0f2fe; color: #0284c7; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" } else { "background: #f1f5f9; color: #64748b; font-size: 11px; padding: 4px 10px; border-radius: 100px; font-weight: 600;" }>
+                                        {if loc_is_active { "Aktif" } else { "Inaktif" }}
                                     </span>
                                 </div>
                             }
@@ -247,7 +327,16 @@ pub fn Settings() -> impl IntoView {
                 // --- Map UI (Task 2.2 Leaflet) ---
                 <div style=move || if show_map.get() { "display: block; border: 1px solid blue; padding: 1rem; margin-top: 1rem; background: #fff;" } else { "display: none;" }>
                     <h4 style="margin-top: 0;">"Pilih Lokasi Kantor"</h4>
-                    <MapPicker />
+                    <MapPicker on_success=Callback::new(move |()| {
+                        set_show_map.set(false);
+                        wasm_bindgen_futures::spawn_local(async move {
+                            if let Ok(l_res) = invoke("get_locations", JsValue::NULL).await.dyn_into::<JsValue>() {
+                                if let Ok(l) = from_value::<Vec<OfficeLocation>>(l_res) {
+                                    set_locations.set(l);
+                                }
+                            }
+                        });
+                    }) />
                     <button on:click=move |_| set_show_map.set(false) style="margin-top: 0.5rem; background: #e2e8f0; border: none; padding: 8px 16px; border-radius: 4px;">"Batal / Tutup Peta"</button>
                 </div>
             </div>
@@ -262,6 +351,21 @@ pub fn Settings() -> impl IntoView {
                         style="background: #1a3a5c; color: white; border: none; padding: 0.5rem 1.5rem; border-radius: 4px; cursor: pointer; font-weight: bold;"
                     >
                         "OK"
+                    </button>
+                </div>
+            </div>
+
+            // --- Info Modal ---
+            <div style=move || if show_info_modal.get() { "display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000;" } else { "display: none;" }>
+                <div style="background: white; padding: 2rem; width: 80%; max-width: 300px; border-radius: 16px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
+                    <i class="fas fa-info-circle" style="font-size: 48px; color: #3b82f6; margin-bottom: 16px;"></i>
+                    <h3 style="margin: 0 0 8px 0; color: #0f172a;">"Info Pengembang"</h3>
+                    <p style="margin: 0 0 24px 0; color: #64748b; font-size: 14px;">"Pengembang: Mohammad Iznaen Tanggapili"</p>
+                    <button 
+                        on:click=move |_| set_show_info_modal.set(false)
+                        style="background: #1a3a5c; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; width: 100%; cursor: pointer;"
+                    >
+                        "Tutup"
                     </button>
                 </div>
             </div>

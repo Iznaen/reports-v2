@@ -23,7 +23,8 @@ pub fn run() {
             commands::profile::save_signature,
             commands::profile::get_signature,
             commands::locations::get_locations,
-            commands::locations::add_location
+            commands::locations::add_location,
+            commands::locations::update_location_name
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

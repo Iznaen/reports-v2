@@ -67,6 +67,57 @@
         };
         tryInit();
       };
+
+      window.leafletState = { map: null, marker: null };
+
+      window.initLeafletMap = function(mapId) {
+          const tryInit = () => {
+              const container = document.getElementById(mapId);
+              if (!container) {
+                  setTimeout(tryInit, 50);
+                  return;
+              }
+              if (container.dataset.initialized) return;
+              container.dataset.initialized = "true";
+              
+              container.innerHTML = "";
+              
+              const initialLat = -3.973775351502879;
+              const initialLng = 122.5057339668274;
+              
+              const map = L.map(mapId).setView([initialLat, initialLng], 13);
+              L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                  maxZoom: 19,
+                  attribution: '© OpenStreetMap'
+              }).addTo(map);
+              
+              const marker = L.marker([initialLat, initialLng], {draggable: true}).addTo(map);
+
+              window.leafletState.map = map;
+              window.leafletState.marker = marker;
+          };
+          tryInit();
+      };
+
+      window.resetLeafletMap = function() {
+          if (!window.leafletState.map) return;
+          const initialLat = -3.973775351502879;
+          const initialLng = 122.5057339668274;
+          
+          window.leafletState.map.setView([initialLat, initialLng], 13);
+          window.leafletState.marker.setLatLng([initialLat, initialLng]);
+          
+          // Force leaflet to recalculate grid sizes now that display: block is active
+          setTimeout(() => { 
+              window.leafletState.map.invalidateSize(); 
+          }, 100);
+      };
+
+      window.getMapSelection = function() {
+          if (!window.leafletState.marker) return null;
+          const pos = window.leafletState.marker.getLatLng();
+          return [pos.lat, pos.lng];
+      };
     </script>
   </head>
   <body></body>

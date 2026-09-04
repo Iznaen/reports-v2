@@ -39,3 +39,14 @@ pub async fn add_location(location: OfficeLocation, db: State<'_, Mutex<Connecti
     
     Ok(conn.last_insert_rowid())
 }
+
+#[command]
+pub async fn update_location_name(id: i64, new_name: String, db: State<'_, Mutex<Connection>>) -> Result<(), String> {
+    let conn = db.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE office_locations SET name = ?1 WHERE id = ?2",
+        (&new_name, &id)
+    ).map_err(|e| format!("Failed to update location name: {}", e))?;
+    
+    Ok(())
+}
