@@ -1,0 +1,23 @@
+{
+  "productName": "reports-v2",
+  "version": "0.1.0",
+  "identifier": "com.reports.v2.app",
+  "build": {
+    "beforeDevCommand": "cd frontend && trunk serve --port 8080",
+    "devUrl": "http://127.0.0.1:8080",
+    "beforeBuildCommand": "cd frontend && trunk build --release",
+    "frontendDist": "../frontend/dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "reports-v2",
+        "width": 800,
+        "height": 600
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

@@ -1,0 +1,23 @@
+# Rust & Builds
+/target/
+/frontend/dist/
+/frontend/.trunk/
+/src-tauri/target/
+
+# AI Agents & Documentation (per guidelines)
+/.agents/
+/docs/
+
+# Secrets & Credentials
+.env
+.env.*
+*.secret
+credentials.json
+
+# Keys & Signing Certificates
+*.key
+*.pem
+*.keystore
+*.jks
+*.p12
+*.pfx
