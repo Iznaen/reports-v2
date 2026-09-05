@@ -31,7 +31,9 @@ pub fn run() {
             commands::attendance::clock_out,
             commands::tasks::get_today_tasks,
             commands::tasks::add_task,
-            commands::tasks::delete_task
+            commands::tasks::delete_task,
+            commands::report::get_monthly_report_data,
+            commands::report::get_report_dashboard_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
