@@ -10,7 +10,7 @@ extern "C" {
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
 
     #[wasm_bindgen(js_namespace = window)]
-    fn print();
+    fn printReportNuke();
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -111,7 +111,7 @@ pub fn ReportPrint() -> impl IntoView {
     });
 
     let do_print = move |_| {
-        print();
+        printReportNuke();
     };
 
     view! {
@@ -242,12 +242,12 @@ pub fn ReportPrint() -> impl IntoView {
                     color: white;
                     font-weight: 600;
                     text-align: left;
-                    padding: 10px 8px;
+                    padding: 12px 8px; /* TWEAK HERE for Header Height (Screen) */
                     border: 1px solid #1e3a8a;
                 }
                 td {
                     border: 1px solid #cbd5e1;
-                    padding: 8px;
+                    padding: 12px 8px; /* TWEAK HERE for Cell Height (Screen) */
                     vertical-align: middle;
                     color: #334155;
                 }
@@ -363,7 +363,8 @@ pub fn ReportPrint() -> impl IntoView {
                   tr { page-break-inside: avoid; page-break-after: auto; }
                   thead { display: table-header-group; }
                   tfoot { display: table-footer-group; }
-                  th, td { padding: 4px 4px !important; }
+                  th, td { padding: 10px 4px !important; /* TWEAK HERE for Cell Height (Print) */ }
+                  .signature-area { page-break-inside: avoid !important; } /* Prevents signature slicing */
                 }
                 "
             </style>
@@ -475,7 +476,7 @@ pub fn ReportPrint() -> impl IntoView {
                                     <div class="sig-name">{prof_name.clone()}</div>
                                     <div class="sig-ni">"NI. "{prof_ni.clone()}</div>
                                 </div>
-                                <div class="page-footer">{format!("Dicetak dari Sistem Laporan Kinerja | Halaman 1")}</div>
+                                
                             </div>
 
                             // ================= HALAMAN 2: LOGBOOK =================
@@ -543,7 +544,7 @@ pub fn ReportPrint() -> impl IntoView {
                                     <div class="sig-name">{prof_name.clone()}</div>
                                     <div class="sig-ni">"NI. "{prof_ni.clone()}</div>
                                 </div>
-                                <div class="page-footer">{format!("Dicetak dari Sistem Laporan Kinerja | Halaman 2")}</div>
+                                
                             </div>
                             
                             // ================= HALAMAN 3: LAMPIRAN FOTO =================
@@ -588,7 +589,7 @@ pub fn ReportPrint() -> impl IntoView {
                                     <div class="sig-name">{prof_name.clone()}</div>
                                     <div class="sig-ni">"NI. "{prof_ni.clone()}</div>
                                 </div>
-                                <div class="page-footer">{format!("Dicetak dari Sistem Laporan Kinerja | Halaman 3")}</div>
+                                
                             </div>
 
                         </div>

@@ -306,6 +306,47 @@
               }, { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 });
           });
       };
+
+      window.printReportNuke = function() {
+          const reportContainer = document.querySelector('.report-preview-container');
+          if (!reportContainer) {
+              window.print(); // Fallback
+              return;
+          }
+          
+          const printContent = reportContainer.cloneNode(true);
+          const printHost = document.createElement('div');
+          printHost.id = 'print-host-nuke';
+          printHost.appendChild(printContent);
+          
+          // Hide all other children of body
+          const bodyChildren = Array.from(document.body.children);
+          bodyChildren.forEach(child => {
+              if (child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE') {
+                  child.dataset.originalDisplay = child.style.display;
+                  child.style.display = 'none';
+              }
+          });
+          
+          document.body.appendChild(printHost);
+          
+          // Allow DOM to settle before calling print
+          setTimeout(() => {
+              window.print();
+              
+              // Restore DOM after print dialog closes
+              setTimeout(() => {
+                  if (document.body.contains(printHost)) {
+                      document.body.removeChild(printHost);
+                  }
+                  bodyChildren.forEach(child => {
+                      if (child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE') {
+                          child.style.display = child.dataset.originalDisplay || '';
+                      }
+                  });
+              }, 1000);
+          }, 300);
+      };
     </script>
   </head>
   <body></body>
