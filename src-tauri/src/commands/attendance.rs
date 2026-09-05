@@ -45,21 +45,21 @@ pub async fn get_today_attendance(db: State<'_, Mutex<Connection>>) -> Result<Op
 }
 
 #[command]
-pub async fn clock_in(db: State<'_, Mutex<Connection>>) -> Result<(), String> {
+pub async fn clock_in(photo: String, lat: f64, lng: f64, db: State<'_, Mutex<Connection>>) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     let shift_date = get_current_shift_date();
     let now_str = Local::now().to_rfc3339();
     
     conn.execute(
-        "INSERT INTO attendance_records (date, clock_in_time, status) VALUES (?1, ?2, 'Masuk')",
-        (&shift_date, &now_str)
+        "INSERT INTO attendance_records (date, clock_in_time, clock_in_photo, clock_in_lat, clock_in_lng, status) VALUES (?1, ?2, ?3, ?4, ?5, 'Masuk')",
+        (&shift_date, &now_str, &photo, &lat, &lng)
     ).map_err(|e| format!("Failed to clock in: {}", e))?;
     
     Ok(())
 }
 
 #[command]
-pub async fn clock_out(db: State<'_, Mutex<Connection>>) -> Result<(), String> {
+pub async fn clock_out(photo: String, lat: f64, lng: f64, db: State<'_, Mutex<Connection>>) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     let shift_date = get_current_shift_date();
     let now = Local::now();
@@ -85,8 +85,8 @@ pub async fn clock_out(db: State<'_, Mutex<Connection>>) -> Result<(), String> {
     }
 
     conn.execute(
-        "UPDATE attendance_records SET clock_out_time = ?1, status = 'Selesai' WHERE date = ?2",
-        (&now_str, &shift_date)
+        "UPDATE attendance_records SET clock_out_time = ?1, clock_out_photo = ?2, clock_out_lat = ?3, clock_out_lng = ?4, status = 'Selesai' WHERE date = ?5",
+        (&now_str, &photo, &lat, &lng, &shift_date)
     ).map_err(|e| format!("Failed to clock out: {}", e))?;
     
     Ok(())

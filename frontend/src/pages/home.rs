@@ -8,6 +8,12 @@ use wasm_bindgen_futures::spawn_local;
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+
+    #[wasm_bindgen(js_namespace = window, catch)]
+    async fn captureAttendancePhoto(status: &str) -> Result<JsValue, JsValue>;
+
+    #[wasm_bindgen(js_namespace = window, catch)]
+    async fn captureTaskPhoto() -> Result<JsValue, JsValue>;
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -19,12 +25,34 @@ pub struct AttendanceRecord {
     pub status: String,
 }
 
+
+#[derive(Debug, serde::Deserialize, Clone)]
+pub struct TaskRecord {
+    pub id: i64,
+    pub attendance_id: i64,
+    pub date: String,
+    pub time: String,
+    pub task_name: String,
+    pub output: String,
+    pub notes: Option<String>,
+    pub photo_path: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
+}
+
 #[component]
 pub fn Home() -> impl IntoView {
     let (current_record, set_current_record) = signal::<Option<AttendanceRecord>>(None);
     let (current_time, set_current_time) = signal(Date::now());
     let (loading, set_loading) = signal(true);
     let (error_msg, set_error_msg) = signal(String::new());
+
+    let (tasks, set_tasks) = signal::<Vec<TaskRecord>>(Vec::new());
+    let (show_task_modal, set_show_task_modal) = signal(false);
+    let (task_name, set_task_name) = signal(String::new());
+    let (task_output, set_task_output) = signal(String::new());
+    let (task_notes, set_task_notes) = signal(String::new());
+    let (task_saving, set_task_saving) = signal(false);
 
     // Setup 1-second interval timer for UI updates
     Effect::new(move |_| {
@@ -63,31 +91,163 @@ pub fn Home() -> impl IntoView {
         });
     };
 
+    let fetch_tasks = move || {
+        spawn_local(async move {
+            if let Ok(res) = invoke("get_today_tasks", JsValue::NULL).await.dyn_into::<JsValue>() {
+                if let Ok(list) = from_value::<Vec<TaskRecord>>(res) {
+                    set_tasks.set(list);
+                }
+            }
+        });
+    };
+
     // Load initial state
     Effect::new(move |_| {
         fetch_attendance();
+        fetch_tasks();
     });
 
-    let do_clock_in = move |_| {
+
+    let do_save_task = move |_| {
+        if task_name.get().is_empty() || task_output.get().is_empty() {
+            set_error_msg.set("Uraian tugas dan output tidak boleh kosong.".to_string());
+            return;
+        }
+        
         spawn_local(async move {
-            if let Err(e) = invoke("clock_in", JsValue::NULL).await.dyn_into::<JsValue>() {
+            set_task_saving.set(true);
+            set_error_msg.set(String::new());
+            
+            match captureTaskPhoto().await {
+                Ok(js_obj) => {
+                    #[derive(serde::Deserialize)]
+                    #[allow(non_snake_case)]
+                    struct PhotoResult { base64Data: String, lat: f64, lng: f64 }
+                    
+                    if let Ok(res) = from_value::<PhotoResult>(js_obj) {
+                        #[derive(serde::Serialize)]
+                        #[serde(rename_all = "camelCase")]
+                        struct Args { 
+                            task_name: String, 
+                            output: String, 
+                            notes: Option<String>,
+                            photo_path: Option<String>,
+                            latitude: Option<f64>,
+                            longitude: Option<f64>
+                        }
+                        
+                        let args = serde_wasm_bindgen::to_value(&Args {
+                            task_name: task_name.get(),
+                            output: task_output.get(),
+                            notes: if task_notes.get().is_empty() { None } else { Some(task_notes.get()) },
+                            photo_path: Some(res.base64Data),
+                            latitude: Some(res.lat),
+                            longitude: Some(res.lng)
+                        }).unwrap();
+                        
+                        if let Err(e) = invoke("add_task", args).await.dyn_into::<JsValue>() {
+                            if let Some(err_str) = e.as_string() {
+                                set_error_msg.set(err_str);
+                            }
+                        } else {
+                            set_show_task_modal.set(false);
+                            set_task_name.set(String::new());
+                            set_task_output.set(String::new());
+                            set_task_notes.set(String::new());
+                            fetch_tasks();
+                        }
+                    } else {
+                        set_error_msg.set("Gagal memproses data foto.".to_string());
+                    }
+                }
+                Err(e) => {
+                    set_error_msg.set(e.as_string().unwrap_or("Kamera dibatalkan.".to_string()));
+                }
+            }
+            set_task_saving.set(false);
+        });
+    };
+
+    let do_delete_task = move |id: i64| {
+        spawn_local(async move {
+            #[derive(serde::Serialize)]
+            struct Args { id: i64 }
+            let args = serde_wasm_bindgen::to_value(&Args { id }).unwrap();
+            
+            if let Err(e) = invoke("delete_task", args).await.dyn_into::<JsValue>() {
                 if let Some(err_str) = e.as_string() {
                     set_error_msg.set(err_str);
                 }
             } else {
-                fetch_attendance();
+                fetch_tasks();
+            }
+        });
+    };
+
+    let do_clock_in = move |_| {
+        spawn_local(async move {
+            set_error_msg.set(String::new());
+            match captureAttendancePhoto("Absen Masuk").await {
+                Ok(js_obj) => {
+                    #[derive(serde::Deserialize)]
+                    #[allow(non_snake_case)]
+                    struct PhotoResult { base64Data: String, lat: f64, lng: f64 }
+                    
+                    if let Ok(res) = from_value::<PhotoResult>(js_obj) {
+                        #[derive(serde::Serialize)]
+                        struct Args { photo: String, lat: f64, lng: f64 }
+                        let args = serde_wasm_bindgen::to_value(&Args {
+                            photo: res.base64Data,
+                            lat: res.lat,
+                            lng: res.lng
+                        }).unwrap();
+                        
+                        if let Err(e) = invoke("clock_in", args).await.dyn_into::<JsValue>() {
+                            if let Some(err_str) = e.as_string() {
+                                set_error_msg.set(err_str);
+                            }
+                        } else {
+                            fetch_attendance();
+                        }
+                    }
+                }
+                Err(e) => {
+                    set_error_msg.set(e.as_string().unwrap_or("Kamera dibatalkan.".to_string()));
+                }
             }
         });
     };
 
     let do_clock_out = move |_| {
         spawn_local(async move {
-            if let Err(e) = invoke("clock_out", JsValue::NULL).await.dyn_into::<JsValue>() {
-                if let Some(err_str) = e.as_string() {
-                    set_error_msg.set(err_str);
+            set_error_msg.set(String::new());
+            match captureAttendancePhoto("Absen Keluar").await {
+                Ok(js_obj) => {
+                    #[derive(serde::Deserialize)]
+                    #[allow(non_snake_case)]
+                    struct PhotoResult { base64Data: String, lat: f64, lng: f64 }
+                    
+                    if let Ok(res) = from_value::<PhotoResult>(js_obj) {
+                        #[derive(serde::Serialize)]
+                        struct Args { photo: String, lat: f64, lng: f64 }
+                        let args = serde_wasm_bindgen::to_value(&Args {
+                            photo: res.base64Data,
+                            lat: res.lat,
+                            lng: res.lng
+                        }).unwrap();
+                        
+                        if let Err(e) = invoke("clock_out", args).await.dyn_into::<JsValue>() {
+                            if let Some(err_str) = e.as_string() {
+                                set_error_msg.set(err_str);
+                            }
+                        } else {
+                            fetch_attendance();
+                        }
+                    }
                 }
-            } else {
-                fetch_attendance();
+                Err(e) => {
+                    set_error_msg.set(e.as_string().unwrap_or("Kamera dibatalkan.".to_string()));
+                }
             }
         });
     };
@@ -197,6 +357,77 @@ pub fn Home() -> impl IntoView {
                         </div>
                     </div>
                     
+
+                    // Task Log Section
+                    {move || {
+                        if let Some(rec) = current_record.get() {
+                            if rec.clock_in_time.is_some() {
+                                view! {
+                                    <div style="margin-top: 32px; border-top: 1px solid #e2e8f0; padding-top: 24px;">
+                                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                                            <div style="font-weight: 700; color: #0f172a; font-size: 16px;">
+                                                <i class="fas fa-tasks" style="color: #6366f1; margin-right: 8px;"></i>
+                                                "Catat Bukti Kegiatan"
+                                            </div>
+                                            <button 
+                                                on:click=move |_| set_show_task_modal.set(true)
+                                                style="background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 14px; cursor: pointer;"
+                                            >
+                                                <i class="fas fa-plus" style="margin-right: 4px;"></i> "Tambah"
+                                            </button>
+                                        </div>
+                                        
+                                        // Task List
+                                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                                            {move || {
+                                                let t_list = tasks.get();
+                                                if t_list.is_empty() {
+                                                    view! {
+                                                        <div style="text-align: center; color: #94a3b8; font-size: 14px; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px dashed #cbd5e1;">
+                                                            "Belum ada kegiatan yang dicatat hari ini."
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    t_list.into_iter().map(|t| {
+                                                        let tid = t.id;
+                                                        view! {
+                                                            <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; position: relative;">
+                                                                <button 
+                                                                    on:click=move |_| do_delete_task(tid)
+                                                                    style="position: absolute; top: 12px; right: 12px; background: transparent; border: none; color: #ef4444; cursor: pointer; padding: 4px;"
+                                                                >
+                                                                    <i class="fas fa-trash-alt"></i>
+                                                                </button>
+                                                                <div style="font-size: 12px; color: #64748b; font-weight: 600; margin-bottom: 4px;">{t.time}</div>
+                                                                <div style="font-weight: 600; color: #1e293b; margin-bottom: 4px;">{t.task_name}</div>
+                                                                <div style="font-size: 14px; color: #475569;">
+                                                                    <span style="font-weight: 600;">"Output: "</span> {t.output}
+                                                                </div>
+                                                                {if let Some(n) = t.notes {
+                                                                    view! {
+                                                                        <div style="font-size: 13px; color: #64748b; margin-top: 4px; font-style: italic;">
+                                                                            {n}
+                                                                        </div>
+                                                                    }.into_any()
+                                                                } else {
+                                                                    view! { <span></span> }.into_any()
+                                                                }}
+                                                            </div>
+                                                        }
+                                                    }).collect_view().into_any()
+                                                }
+                                            }}
+                                        </div>
+                                    </div>
+                                }.into_any()
+                            } else {
+                                view! { <span></span> }.into_any()
+                            }
+                        } else {
+                            view! { <span></span> }.into_any()
+                        }
+                    }}
+
                     // Absen Keluar Row
                     <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 16px; border-top: 1px solid #e2e8f0;">
                         <div style="font-weight: 600; color: #1e293b; font-size: 16px;">
@@ -239,6 +470,73 @@ pub fn Home() -> impl IntoView {
                     </div>
                 </div>
             </div>
+
+            // Task Modal
+            {move || {
+                if show_task_modal.get() {
+                    view! {
+                        <div style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 100; display: flex; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;">
+                            <div style="background: white; border-radius: 16px; padding: 24px; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+                                <h3 style="margin-top: 0; margin-bottom: 16px; color: #0f172a; font-size: 18px;">"Tambah Kegiatan Baru"</h3>
+                                
+                                <div style="margin-bottom: 12px;">
+                                    <label style="display: block; font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 4px;">"Uraian Tugas"</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Cth: Rapat koordinasi..."
+                                        prop:value=task_name
+                                        on:input=move |e| set_task_name.set(event_target_value(&e))
+                                        style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                                    />
+                                </div>
+                                
+                                <div style="margin-bottom: 12px;">
+                                    <label style="display: block; font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 4px;">"Output / Hasil"</label>
+                                    <input 
+                                        type="text" 
+                                        placeholder="Cth: Dokumen kesepakatan"
+                                        prop:value=task_output
+                                        on:input=move |e| set_task_output.set(event_target_value(&e))
+                                        style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box;"
+                                    />
+                                </div>
+                                
+                                <div style="margin-bottom: 24px;">
+                                    <label style="display: block; font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 4px;">"Keterangan (Opsional)"</label>
+                                    <textarea 
+                                        placeholder="Catatan tambahan..."
+                                        prop:value=task_notes
+                                        on:input=move |e| set_task_notes.set(event_target_value(&e))
+                                        style="width: 100%; padding: 10px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px; box-sizing: border-box; min-height: 80px;"
+                                    ></textarea>
+                                </div>
+                                
+                                <div style="display: flex; gap: 12px;">
+                                    <button 
+                                        on:click=move |_| set_show_task_modal.set(false)
+                                        style="flex: 1; padding: 10px; background: #f1f5f9; color: #475569; border: none; border-radius: 8px; font-weight: 600; cursor: pointer;"
+                                    >"Batal"</button>
+                                    
+                                    <button 
+                                        on:click=do_save_task
+                                        disabled=move || task_saving.get()
+                                        style="flex: 1; padding: 10px; background: #4f46e5; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px;"
+                                    >
+                                        {move || if task_saving.get() {
+                                            view! { <i class="fas fa-spinner fa-spin"></i> }.into_any()
+                                        } else {
+                                            view! { <><i class="fas fa-camera"></i> "Foto & Simpan"</> }.into_any()
+                                        }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    }.into_any()
+                } else {
+                    view! { <span></span> }.into_any()
+                }
+            }}
+
         </div>
     }
 }
