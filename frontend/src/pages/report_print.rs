@@ -6,8 +6,8 @@ use wasm_bindgen_futures::spawn_local;
 
 #[wasm_bindgen]
 extern "C" {
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
-    async fn invoke(cmd: &str, args: JsValue) -> JsValue;
+    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"], catch)]
+    async fn invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
 }
 
 // ============================================================
@@ -225,7 +225,7 @@ pub fn ReportPrint() -> impl IntoView {
             struct Args { year: i32, month: u32 }
             let args = serde_wasm_bindgen::to_value(&Args { year, month }).unwrap();
 
-            match invoke("get_monthly_report_data", args).await.dyn_into::<JsValue>() {
+            match invoke("get_monthly_report_data", args).await {
                 Ok(res) => {
                     if let Ok(report) = from_value::<MonthlyReportData>(res) {
                         set_data.set(Some(report));
@@ -254,7 +254,7 @@ pub fn ReportPrint() -> impl IntoView {
                 #[derive(serde::Serialize)]
                 struct Args { input: PdfReportInput }
                 let args = serde_wasm_bindgen::to_value(&Args { input: pdf_input }).unwrap();
-                match invoke("generate_report_preview", args).await.dyn_into::<JsValue>() {
+                match invoke("generate_report_preview", args).await {
                     Ok(res) => {
                         if let Ok(result) = from_value::<SvgPreviewResult>(res) {
                             set_preview_pages.set(result.pages);
@@ -285,7 +285,7 @@ pub fn ReportPrint() -> impl IntoView {
                 #[derive(serde::Serialize)]
                 struct Args { input: PdfReportInput }
                 let args = serde_wasm_bindgen::to_value(&Args { input: pdf_input }).unwrap();
-                match invoke("export_report_pdf", args).await.dyn_into::<JsValue>() {
+                match invoke("export_report_pdf", args).await {
                     Ok(res) => {
                         let msg = res.as_string().unwrap_or_default();
                         if msg == "cancelled" {
