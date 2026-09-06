@@ -37,6 +37,9 @@ pub fn run() {
             commands::report::get_report_dashboard_data,
             commands::gen_pdf::generate_report_preview,
             commands::gen_pdf::export_report_pdf,
+            commands::holidays::get_holidays,
+            commands::holidays::add_holiday,
+            commands::holidays::delete_holiday,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

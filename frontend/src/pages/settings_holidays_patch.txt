@@ -1,0 +1,7 @@
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct HolidayRecord {
+    id: i64,
+    date: String,
+    h_type: String,
+    description: String,
+}

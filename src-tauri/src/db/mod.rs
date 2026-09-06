@@ -80,6 +80,13 @@ pub fn init_db(app_handle: &AppHandle) -> Result<Connection, String> {
             longitude REAL,
             FOREIGN KEY(attendance_id) REFERENCES attendance_records(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS holidays_leaves (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            date TEXT NOT NULL UNIQUE,
+            type TEXT NOT NULL,
+            description TEXT NOT NULL
+        );
         "
     ).map_err(|e| format!("Failed to create database tables: {}", e))?;
 

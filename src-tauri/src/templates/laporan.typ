@@ -162,6 +162,7 @@
         if stat == "Alpha" { return rgb("#ffe6e6") }
         if stat == "Parsial" { return rgb("#fff8e6") }
         if stat.starts-with("Libur") { return rgb("#f0e6ff") }
+        if stat.starts-with("Cuti") { return rgb("#e0f2fe") }
       }
       return if calc.even(row) { row-even } else { row-odd }
     },

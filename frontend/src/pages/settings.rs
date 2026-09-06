@@ -27,6 +27,14 @@ struct OfficeLocation {
     is_active: bool,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+struct HolidayRecord {
+    id: i64,
+    date: String,
+    h_type: String,
+    description: String,
+}
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
@@ -56,6 +64,13 @@ pub fn Settings() -> impl IntoView {
     let (show_sig_modal, set_show_sig_modal) = signal(false);
     let (show_success_dialog, set_show_success_dialog) = signal(false);
     let (show_info_modal, set_show_info_modal) = signal(false);
+
+    // Holidays State
+    let (holidays, set_holidays) = signal(Vec::<HolidayRecord>::new());
+    let (show_holiday_modal, set_show_holiday_modal) = signal(false);
+    let (holiday_date, set_holiday_date) = signal(String::new());
+    let (holiday_type, set_holiday_type) = signal("Libur".to_string());
+    let (holiday_desc, set_holiday_desc) = signal(String::new());
     
     // Initial load - Fetch profile and locations
     wasm_bindgen_futures::spawn_local(async move {
@@ -76,6 +91,12 @@ pub fn Settings() -> impl IntoView {
                 set_saved_signature.set(Some(sig));
             }
         }
+        
+        if let Ok(h_res) = invoke("get_holidays", JsValue::NULL).await.dyn_into::<JsValue>() {
+            if let Ok(h) = from_value::<Vec<HolidayRecord>>(h_res) {
+                set_holidays.set(h);
+            }
+        }
     });
 
     let save_profile = move |_| {
@@ -86,6 +107,47 @@ pub fn Settings() -> impl IntoView {
             let args = to_value(&Args { profile: p }).unwrap();
             invoke("save_profile", args).await;
             set_show_success_dialog.set(true);
+        });
+    };
+
+    let save_holiday = move |_| {
+        let date = holiday_date.get();
+        let h_type = holiday_type.get();
+        let desc = holiday_desc.get();
+        if date.is_empty() || desc.is_empty() { return; }
+        
+        wasm_bindgen_futures::spawn_local(async move {
+            #[derive(Serialize)]
+            #[serde(rename_all = "camelCase")]
+            struct Args { date: String, h_type: String, description: String }
+            let args = to_value(&Args { date, h_type, description: desc }).unwrap();
+            invoke("add_holiday", args).await;
+            
+            // Refresh holidays
+            if let Ok(h_res) = invoke("get_holidays", JsValue::NULL).await.dyn_into::<JsValue>() {
+                if let Ok(h) = from_value::<Vec<HolidayRecord>>(h_res) {
+                    set_holidays.set(h);
+                }
+            }
+            set_show_holiday_modal.set(false);
+            set_holiday_date.set(String::new());
+            set_holiday_desc.set(String::new());
+        });
+    };
+
+    let delete_holiday_record = move |id: i64| {
+        wasm_bindgen_futures::spawn_local(async move {
+            #[derive(Serialize)]
+            struct Args { id: i64 }
+            let args = to_value(&Args { id }).unwrap();
+            invoke("delete_holiday", args).await;
+            
+            // Refresh holidays
+            if let Ok(h_res) = invoke("get_holidays", JsValue::NULL).await.dyn_into::<JsValue>() {
+                if let Ok(h) = from_value::<Vec<HolidayRecord>>(h_res) {
+                    set_holidays.set(h);
+                }
+            }
         });
     };
 
@@ -302,6 +364,102 @@ pub fn Settings() -> impl IntoView {
                     </div>
                 </section>
 
+                // --- Manajemen Cuti & Libur ---
+                <section style="margin-bottom: 24px;">
+                    <div style="font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <i class="fas fa-calendar-alt" style="color: #1a3a5c; font-size: 18px;"></i>
+                            "Cuti & Libur"
+                        </div>
+                        <button on:click=move |_| {
+                            set_holiday_date.set(String::new());
+                            set_holiday_desc.set(String::new());
+                            set_holiday_type.set("Libur".to_string());
+                            set_show_holiday_modal.set(true);
+                        } style="background: #e0f2fe; color: #0369a1; border: none; border-radius: 8px; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 8px;">
+                        {move || {
+                            let h_list = holidays.get();
+                            if h_list.is_empty() {
+                                view! {
+                                    <div style="text-align: center; color: #94a3b8; font-size: 14px; padding: 12px; border: 1px dashed #cbd5e1; border-radius: 8px;">
+                                        "Belum ada data libur/cuti."
+                                    </div>
+                                }.into_any()
+                            } else {
+                                h_list.into_iter().map(|h| {
+                                    let id = h.id;
+                                    let is_cuti = h.h_type == "Cuti";
+                                    let bg_color = if is_cuti { "#e0f2fe" } else { "#f3e8ff" };
+                                    let text_color = if is_cuti { "#0369a1" } else { "#7e22ce" };
+                                    
+                                    view! {
+                                        <div style="background: #fff; border: 1px solid #edf2f7; border-radius: 12px; padding: 12px; display: flex; justify-content: space-between; align-items: center;">
+                                            <div style="display: flex; flex-direction: column; gap: 4px;">
+                                                <div style="display: flex; align-items: center; gap: 8px;">
+                                                    <span style=format!("background: {}; color: {}; font-size: 10px; font-weight: bold; padding: 2px 8px; border-radius: 12px;", bg_color, text_color)>
+                                                        {h.h_type}
+                                                    </span>
+                                                    <span style="font-weight: 600; font-size: 14px; color: #1e293b;">{h.date}</span>
+                                                </div>
+                                                <div style="font-size: 13px; color: #64748b;">{h.description}</div>
+                                            </div>
+                                            <i class="fas fa-trash text-red-500" style="cursor: pointer; padding: 8px;"
+                                                on:click=move |_| delete_holiday_record(id)
+                                            ></i>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>().into_any()
+                            }
+                        }}
+                    </div>
+                </section>
+
+                // --- Holiday Modal ---
+                <div style=move || if show_holiday_modal.get() { "display: block; border: 1px solid black; padding: 1rem; margin-top: 1rem; background: #fff; border-radius: 8px;" } else { "display: none;" }>
+                    <h4 style="margin-top: 0; color: #0f172a;">"Tambah Libur / Cuti"</h4>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px;">
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 12px; color: #64748b;">"Tanggal"</label>
+                            <input type="date" 
+                                style="border: 1px solid #cbd5e1; padding: 8px; border-radius: 4px;"
+                                prop:value=move || holiday_date.get()
+                                on:input=move |ev| set_holiday_date.set(event_target_value(&ev)) />
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 12px; color: #64748b;">"Jenis"</label>
+                            <select 
+                                style="border: 1px solid #cbd5e1; padding: 8px; border-radius: 4px;"
+                                prop:value=move || holiday_type.get()
+                                on:change=move |ev| set_holiday_type.set(event_target_value(&ev))>
+                                <option value="Libur">"Libur"</option>
+                                <option value="Cuti">"Cuti"</option>
+                            </select>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                            <label style="font-size: 12px; color: #64748b;">"Keterangan"</label>
+                            <input type="text" placeholder="Contoh: Idul Fitri" 
+                                style="border: 1px solid #cbd5e1; padding: 8px; border-radius: 4px;"
+                                prop:value=move || holiday_desc.get()
+                                on:input=move |ev| set_holiday_desc.set(event_target_value(&ev)) />
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 8px;">
+                        <button on:click=save_holiday style="background: #1a3a5c; color: white; border: none; padding: 8px 16px; border-radius: 4px;">"Simpan"</button>
+                        <button on:click=move |_| {
+                            set_holiday_date.set(String::new());
+                            set_holiday_desc.set(String::new());
+                            set_holiday_type.set("Libur".to_string());
+                            set_show_holiday_modal.set(false);
+                        } style="background: #e2e8f0; border: none; padding: 8px 16px; border-radius: 4px;">"Batal"</button>
+                    </div>
+                </div>
                 // --- Tanda Tangan Digital ---
                 <section style="margin-bottom: 24px;">
                     <div style="font-size: 16px; font-weight: 600; color: #0f172a; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">

@@ -150,6 +150,18 @@ pub async fn get_monthly_report_data(
         })
     }).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
 
+    // 4b. Fetch holidays and leaves for the month
+    let mut holiday_stmt = conn.prepare(
+        "SELECT date, type, description FROM holidays_leaves WHERE date LIKE ?1"
+    ).map_err(|e| e.to_string())?;
+
+    let holidays: std::collections::HashMap<String, String> = holiday_stmt.query_map([&month_prefix], |row| {
+        let date: String = row.get(0)?;
+        let h_type: String = row.get(1)?;
+        let desc: String = row.get(2)?;
+        Ok((date, format!("{} - {}", h_type, desc)))
+    }).map_err(|e| e.to_string())?.filter_map(Result::ok).collect();
+
     // 5. Build the Calendar Data (Days 1..N) and Extract Photos
     let num_days = get_days_in_month(year, month);
     let mut attendance_days = Vec::new();
@@ -161,7 +173,9 @@ pub async fn get_monthly_report_data(
         let date_str_indo = format!("{} {} {}", day, indo_month(month), year);
         
         let wd = date_obj.weekday();
-        let mut row_status = if wd == Weekday::Sat || wd == Weekday::Sun {
+        let mut row_status = if let Some(hol) = holidays.get(&date_key) {
+            hol.clone()
+        } else if wd == Weekday::Sat || wd == Weekday::Sun {
             "Libur Akhir Pekan".to_string()
         } else {
             "Alpha".to_string()
