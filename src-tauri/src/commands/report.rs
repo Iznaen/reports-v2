@@ -172,22 +172,26 @@ pub async fn get_monthly_report_data(
             if let Some(l) = &att.out_loc { out_l = l.clone(); }
 
             // Extract Photos
+            let full_date_str = format!("{} {} {}", day, indo_month(month), year);
+
             if let (Some(b64), Some(time)) = (&att.in_photo, &att.in_time) {
+                let short_time = time.chars().take(5).collect::<String>();
                 photos.push(PhotoItem {
                     photo_type: "Masuk".to_string(),
-                    date_str: date_str_indo.clone(),
-                    time_str: time.clone(),
+                    date_str: full_date_str.clone(),
+                    time_str: short_time.clone(),
                     base64_data: b64.clone(),
-                    caption: format!("Presensi Masuk – {} {}", date_str_indo, time),
+                    caption: format!("Presensi Masuk – {}", short_time),
                 });
             }
             if let (Some(b64), Some(time)) = (&att.out_photo, &att.out_time) {
+                let short_time = time.chars().take(5).collect::<String>();
                 photos.push(PhotoItem {
                     photo_type: "Pulang".to_string(),
-                    date_str: date_str_indo.clone(),
-                    time_str: time.clone(),
+                    date_str: full_date_str.clone(),
+                    time_str: short_time.clone(),
                     base64_data: b64.clone(),
-                    caption: format!("Presensi Pulang – {} {}", date_str_indo, time),
+                    caption: format!("Presensi Pulang – {}", short_time),
                 });
             }
         } else {
@@ -213,20 +217,20 @@ pub async fn get_monthly_report_data(
     // 6. Extract Task Photos
     for t in &tasks {
         if let Some(b64) = &t.photo_path {
-            let parts: Vec<&str> = t.date.split('-').collect();
-            let mut d_str = t.date.clone();
-            if parts.len() == 3 {
-                let d: u32 = parts[2].parse().unwrap_or(0);
-                let m: u32 = parts[1].parse().unwrap_or(0);
-                let y: i32 = parts[0].parse().unwrap_or(0);
-                d_str = format!("{} {} {}", d, short_indo_month(m), y);
-            }
+            let short_time = t.time.chars().take(5).collect::<String>();
+            let (y, m, d) = (
+                t.date[0..4].parse::<i32>().unwrap_or(year),
+                t.date[5..7].parse::<u32>().unwrap_or(month),
+                t.date[8..10].parse::<u32>().unwrap_or(1)
+            );
+            let full_date_str = format!("{} {} {}", d, indo_month(m), y);
+
             photos.push(PhotoItem {
                 photo_type: "Kegiatan".to_string(),
-                date_str: d_str.clone(),
-                time_str: t.time.clone(),
+                date_str: full_date_str,
+                time_str: short_time.clone(),
                 base64_data: b64.clone(),
-                caption: format!("{} – {} {}", t.task_name.chars().take(20).collect::<String>(), d_str, t.time),
+                caption: format!("{} – {}", t.task_name.chars().take(30).collect::<String>(), short_time),
             });
         }
     }

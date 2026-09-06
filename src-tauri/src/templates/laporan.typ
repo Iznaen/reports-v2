@@ -105,12 +105,13 @@
 #section_title[A. Rekapitulasi Presensi]
 
 #table(
-  columns: (0.7cm, 1.4cm, 2cm, 1.8cm, 3cm, 1.8cm, 3cm, 2.5cm),
-  stroke: 0.5pt + border_color,
+  columns: (0pt, 0.7cm, 1.4cm, 2cm, 1.8cm, 3cm, 1.8cm, 3cm, 2.5cm),
+  stroke: (col, row) => if col == 0 { none } else { 0.5pt + border_color },
   fill: (col, row) => if row == 0 { header_fill } else if calc.odd(row) { row_alt_fill } else { white },
-  inset: (x: 0.3cm, y: 0.25cm),
-  align: (col, row) => if col == 0 or col == 3 or col == 5 { center } else { left },
+  inset: (col, row) => if col == 0 { 0pt } else { (x: 0.3cm, y: 0.25cm) },
+  align: (col, row) => if col == 1 or col == 4 or col == 6 { center } else { left },
   table.header(
+    [], // dummy col
     text(fill: white, weight: "bold", size: 9pt)[No],
     text(fill: white, weight: "bold", size: 9pt)[Hari],
     text(fill: white, weight: "bold", size: 9pt)[Tanggal],
@@ -120,19 +121,36 @@
     text(fill: white, weight: "bold", size: 9pt)[Lokasi Pulang],
     text(fill: white, weight: "bold", size: 9pt)[Keterangan],
   ),
-  ..att_rows.map(r => (
-    text(size: 9pt)[#r.no],
-    text(size: 9pt)[#r.day],
-    text(size: 9pt)[#r.date],
-    text(size: 9pt)[#r.in_time],
-    text(size: 9pt)[#r.in_loc],
-    text(size: 9pt)[#r.out_time],
-    text(size: 9pt)[#r.out_loc],
-    text(size: 9pt)[#r.status],
-  )).flatten()
-)
+  ..att_rows.enumerate().map(pair => {
+    let (i, r) = pair
+    let keep_rows = 3
+    let keep_start = calc.max(0, att_rows.len() - keep_rows)
+    let is_grouped = (i >= keep_start)
+    
+    let dummy = if i == keep_start {
+      let span_count = att_rows.len() - keep_start + 1
+      (table.cell(rowspan: span_count, breakable: false)[],)
+    } else if is_grouped {
+      ()
+    } else {
+      ([],)
+    }
 
-#signature_block(date_str, name, ni, sig_bytes)
+    dummy + (
+      text(size: 9pt)[#r.no],
+      text(size: 9pt)[#r.day],
+      text(size: 9pt)[#r.date],
+      text(size: 9pt)[#r.in_time],
+      text(size: 9pt)[#r.in_loc],
+      text(size: 9pt)[#r.out_time],
+      text(size: 9pt)[#r.out_loc],
+      text(size: 9pt)[#r.status],
+    )
+  }).flatten(),
+  table.cell(colspan: 8, stroke: none, inset: 0pt)[
+    #signature_block(date_str, name, ni, sig_bytes)
+  ]
+)
 
 // =====================================================================
 // BAGIAN B: LOGBOOK KEGIATAN HARIAN
@@ -154,12 +172,13 @@
 #section_title[B. Logbook Kegiatan Harian]
 
 #table(
-  columns: (0.7cm, 2cm, 1.6cm, 4.5cm, 4cm, 2.5cm),
-  stroke: 0.5pt + border_color,
+  columns: (0pt, 0.7cm, 2.2cm, 1.5cm, 1fr, 3cm, 2.5cm),
+  stroke: (col, row) => if col == 0 { none } else { 0.5pt + border_color },
   fill: (col, row) => if row == 0 { header_fill } else if calc.odd(row) { row_alt_fill } else { white },
-  inset: (x: 0.3cm, y: 0.25cm),
-  align: (col, row) => if col == 0 or col == 2 { center } else { left },
+  inset: (col, row) => if col == 0 { 0pt } else { (x: 0.3cm, y: 0.25cm) },
+  align: (col, row) => if col == 1 or col == 3 { center } else { left },
   table.header(
+    [], // dummy col
     text(fill: white, weight: "bold", size: 9pt)[No],
     text(fill: white, weight: "bold", size: 9pt)[Tanggal],
     text(fill: white, weight: "bold", size: 9pt)[Jam],
@@ -167,17 +186,34 @@
     text(fill: white, weight: "bold", size: 9pt)[Output],
     text(fill: white, weight: "bold", size: 9pt)[Keterangan],
   ),
-  ..task_rows.map(r => (
-    text(size: 9pt)[#r.no],
-    text(size: 9pt)[#r.date],
-    text(size: 9pt)[#r.time],
-    text(size: 9pt)[#r.task],
-    text(size: 9pt)[#r.output],
-    text(size: 9pt)[#r.notes],
-  )).flatten()
-)
+  ..task_rows.enumerate().map(pair => {
+    let (i, r) = pair
+    let keep_rows = 3
+    let keep_start = calc.max(0, task_rows.len() - keep_rows)
+    let is_grouped = (i >= keep_start)
+    
+    let dummy = if i == keep_start {
+      let span_count = task_rows.len() - keep_start + 1
+      (table.cell(rowspan: span_count, breakable: false)[],)
+    } else if is_grouped {
+      ()
+    } else {
+      ([],)
+    }
 
-#signature_block(date_str, name, ni, sig_bytes)
+    dummy + (
+      text(size: 9pt)[#r.no],
+      text(size: 9pt)[#r.date],
+      text(size: 9pt)[#r.time],
+      text(size: 9pt)[#r.task],
+      text(size: 9pt)[#r.output],
+      text(size: 9pt)[#r.notes],
+    )
+  }).flatten(),
+  table.cell(colspan: 6, stroke: none, inset: 0pt)[
+    #signature_block(date_str, name, ni, sig_bytes)
+  ]
+)
 
 // =====================================================================
 // BAGIAN C: LAMPIRAN FOTO DOKUMENTASI
@@ -214,24 +250,16 @@
     pairs
   }
 
-  #for pair in photo_pairs {
-    grid(
-      columns: (1fr, 1fr),
-      gutter: 0.4cm,
-      {
-        let p = pair.at(0)
-        block(stroke: 0.5pt + border_color, radius: 3pt, clip: true, width: 100%)[
-          #image(p.bytes, width: 100%, fit: "cover")
-          #block(width: 100%, inset: 0.25cm, fill: rgb("#f1f5f9"))[
-            #text(size: 8pt, weight: "bold")[#p.photo_type – #p.date_str]
-            #linebreak()
-            #text(size: 7.5pt)[#p.caption]
-          ]
-        ]
-      },
-      {
-        if pair.at(1) != none {
-          let p = pair.at(1)
+  #for pair in photo_pairs.enumerate() {
+    let (i, pair) = pair
+    let is_last = (i == photo_pairs.len() - 1)
+    
+    let content = {
+      grid(
+        columns: (1fr, 1fr),
+        gutter: 0.4cm,
+        {
+          let p = pair.at(0)
           block(stroke: 0.5pt + border_color, radius: 3pt, clip: true, width: 100%)[
             #image(p.bytes, width: 100%, fit: "cover")
             #block(width: 100%, inset: 0.25cm, fill: rgb("#f1f5f9"))[
@@ -240,11 +268,31 @@
               #text(size: 7.5pt)[#p.caption]
             ]
           ]
+        },
+        {
+          if pair.at(1) != none {
+            let p = pair.at(1)
+            block(stroke: 0.5pt + border_color, radius: 3pt, clip: true, width: 100%)[
+              #image(p.bytes, width: 100%, fit: "cover")
+              #block(width: 100%, inset: 0.25cm, fill: rgb("#f1f5f9"))[
+                #text(size: 8pt, weight: "bold")[#p.photo_type – #p.date_str]
+                #linebreak()
+                #text(size: 7.5pt)[#p.caption]
+              ]
+            ]
+          }
         }
-      },
-    )
-    v(0.3cm)
-  }
+      )
+      v(0.3cm)
+    }
 
-  #signature_block(date_str, name, ni, sig_bytes)
+    if is_last {
+      block(breakable: false)[
+        #content
+        #signature_block(date_str, name, ni, sig_bytes)
+      ]
+    } else {
+      content
+    }
+  }
 ]
