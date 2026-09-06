@@ -72,6 +72,14 @@ fn short_indo_month(month: u32) -> &'static str {
     }
 }
 
+fn format_time(t: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(t) {
+        dt.format("%H:%M").to_string()
+    } else {
+        t.chars().take(5).collect()
+    }
+}
+
 fn get_days_in_month(year: i32, month: u32) -> u32 {
     let (next_year, next_month) = if month == 12 { (year + 1, 1) } else { (year, month + 1) };
     let d1 = NaiveDate::from_ymd_opt(year, month, 1).unwrap();
@@ -166,8 +174,8 @@ pub async fn get_monthly_report_data(
 
         if let Some(att) = att_map.get(&date_key) {
             row_status = att.status.clone();
-            in_t = att.in_time.clone();
-            out_t = att.out_time.clone();
+            in_t = att.in_time.as_ref().map(|t| format_time(t));
+            out_t = att.out_time.as_ref().map(|t| format_time(t));
             if let Some(l) = &att.in_loc { in_l = l.clone(); }
             if let Some(l) = &att.out_loc { out_l = l.clone(); }
 
@@ -175,7 +183,7 @@ pub async fn get_monthly_report_data(
             let full_date_str = format!("{} {} {}", day, indo_month(month), year);
 
             if let (Some(b64), Some(time)) = (&att.in_photo, &att.in_time) {
-                let short_time = time.chars().take(5).collect::<String>();
+                let short_time = format_time(time);
                 photos.push(PhotoItem {
                     photo_type: "Masuk".to_string(),
                     date_str: full_date_str.clone(),
@@ -185,7 +193,7 @@ pub async fn get_monthly_report_data(
                 });
             }
             if let (Some(b64), Some(time)) = (&att.out_photo, &att.out_time) {
-                let short_time = time.chars().take(5).collect::<String>();
+                let short_time = format_time(time);
                 photos.push(PhotoItem {
                     photo_type: "Pulang".to_string(),
                     date_str: full_date_str.clone(),

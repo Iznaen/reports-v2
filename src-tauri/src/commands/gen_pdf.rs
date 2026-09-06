@@ -1,7 +1,7 @@
 use tauri::{command, AppHandle};
 use tauri_plugin_dialog::DialogExt;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use std::fs;
+
 
 use typst_as_lib::TypstEngine;
 use typst_library::foundations::{Dict, IntoValue, Value, Bytes, Array};
@@ -236,11 +236,19 @@ pub async fn export_report_pdf(
 
     match save_path {
         Some(file_path) => {
-            let path = file_path.as_path()
-                .ok_or_else(|| "Path tidak valid".to_string())?;
-            fs::write(path, &pdf_bytes)
-                .map_err(|e| format!("Gagal menyimpan file: {}", e))?;
-            Ok(format!("PDF berhasil disimpan ke: {}", path.display()))
+            use tauri_plugin_fs::{FsExt, OpenOptions};
+            use std::io::Write;
+            
+            let mut opts = OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            
+            let mut file = app.fs().open(file_path, opts)
+                .map_err(|e| format!("Gagal membuka file: {}", e))?;
+                
+            file.write_all(&pdf_bytes)
+                .map_err(|e| format!("Gagal menyimpan PDF: {}", e))?;
+                
+            Ok("PDF berhasil disimpan!".to_string())
         }
         None => Err("cancelled".to_string()),
     }
