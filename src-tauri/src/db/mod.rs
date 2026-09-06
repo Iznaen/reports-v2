@@ -87,6 +87,11 @@ pub fn init_db(app_handle: &AppHandle) -> Result<Connection, String> {
             type TEXT NOT NULL,
             description TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         "
     ).map_err(|e| format!("Failed to create database tables: {}", e))?;
 

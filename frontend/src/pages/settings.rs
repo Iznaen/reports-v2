@@ -4,9 +4,11 @@ use serde_wasm_bindgen::{to_value, from_value};
 use wasm_bindgen::prelude::*;
 use crate::components::signature_pad::SignaturePad;
 use crate::components::map::MapPicker;
+use crate::app::DevMode;
 
 // You can edit this password later!
-const ADMIN_PASSWORD: &str = "admin123";
+const ADMIN_PASSWORD: &str = "s1g4b0rt";
+const DEV_PASSWORD: &str = "s1g4b0rt";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 struct EmployeeProfile {
@@ -46,6 +48,8 @@ extern "C" {
 
 #[component]
 pub fn Settings() -> impl IntoView {
+    let dev_mode = use_context::<DevMode>().expect("DevMode context missing");
+
     // Profile State
     let (profile, set_profile) = signal(EmployeeProfile::default());
     let (locations, set_locations) = signal(Vec::<OfficeLocation>::new());
@@ -55,6 +59,12 @@ pub fn Settings() -> impl IntoView {
     let (editing_loc_id, set_editing_loc_id) = signal::<Option<i64>>(None);
     let (edit_loc_name, set_edit_loc_name) = signal(String::new());
     
+    // Dev Mode states
+    let (dev_click_count, set_dev_click_count) = signal(0u32);
+    let (show_dev_modal, set_show_dev_modal) = signal(false);
+    let (dev_password_input, set_dev_password_input) = signal(String::new());
+    let (dev_password_error, set_dev_password_error) = signal(false);
+
     // Modals State
     let (show_password_modal, set_show_password_modal) = signal(false);
     let (password_input, set_password_input) = signal(String::new());
@@ -172,7 +182,13 @@ pub fn Settings() -> impl IntoView {
                 </h1>
                 <i 
                     class="fas fa-info-circle" 
-                    style="font-size: 20px; color: #94a3b8; cursor: pointer;"
+                    style=move || {
+                        if dev_mode.0.get() {
+                            "font-size: 20px; color: #ef4444; cursor: pointer; user-select: none; -webkit-user-select: none;"
+                        } else {
+                            "font-size: 20px; color: #94a3b8; cursor: pointer; user-select: none; -webkit-user-select: none;"
+                        }
+                    }
                     on:click=move |_| set_show_info_modal.set(true)
                 ></i>
             </div>
@@ -354,13 +370,30 @@ pub fn Settings() -> impl IntoView {
                             }
                         }).collect_view()}
                     </div>
-                    <div style="display: flex; gap: 8px;">
-                        <button on:click=move |_| set_show_password_modal.set(true) style="background: #e9edf2; color: #334155; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <button on:click=move |_| {
+                            if dev_mode.0.get() {
+                                set_show_map.set(true);
+                                resetLeafletMap();
+                            } else {
+                                set_show_password_modal.set(true);
+                            }
+                        } style="background: #e9edf2; color: #334155; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
                             <i class="fas fa-plus"></i> "Tambah Lokasi"
                         </button>
-                        <span style="background: #f1f5f9; color: #64748b; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-lock"></i> "Admin"
-                        </span>
+                        {move || if dev_mode.0.get() {
+                            view! {
+                                <span style="background: #fef2f2; color: #ef4444; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-unlock-alt"></i> "Dev Mode"
+                                </span>
+                            }.into_any()
+                        } else {
+                            view! {
+                                <span style="background: #f1f5f9; color: #64748b; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-lock"></i> "Admin"
+                                </span>
+                            }.into_any()
+                        }}
                     </div>
                 </section>
 
@@ -546,15 +579,67 @@ pub fn Settings() -> impl IntoView {
             // --- Info Modal ---
             <div style=move || if show_info_modal.get() { "display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.5); z-index: 1000;" } else { "display: none;" }>
                 <div style="background: white; padding: 2rem; width: 80%; max-width: 300px; border-radius: 16px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.1);">
-                    <i class="fas fa-info-circle" style="font-size: 48px; color: #3b82f6; margin-bottom: 16px;"></i>
+                    // Tap icon 5x to trigger Dev Mode
+                    <i
+                        class="fas fa-info-circle"
+                        style="font-size: 48px; color: #3b82f6; margin-bottom: 16px; cursor: pointer; display: inline-block; user-select: none; -webkit-user-select: none;"
+                        on:click=move |_| {
+                            let count = dev_click_count.get() + 1;
+                            if count >= 5 {
+                                set_dev_click_count.set(0);
+                                set_show_info_modal.set(false);
+                                set_show_dev_modal.set(true);
+                            } else {
+                                set_dev_click_count.set(count);
+                            }
+                        }
+                    ></i>
                     <h3 style="margin: 0 0 8px 0; color: #0f172a;">"Info Pengembang"</h3>
                     <p style="margin: 0 0 24px 0; color: #64748b; font-size: 14px;">"Mohammad Iznaen Tanggapili"</p>
                     <button 
-                        on:click=move |_| set_show_info_modal.set(false)
+                        on:click=move |_| { set_show_info_modal.set(false); set_dev_click_count.set(0); }
                         style="background: #1a3a5c; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; width: 100%; cursor: pointer;"
                     >
                         "Tutup"
                     </button>
+                </div>
+            </div>
+
+            // --- Dev Mode Activation Modal ---
+            <div style=move || if show_dev_modal.get() { "display: flex; align-items: center; justify-content: center; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.7); z-index: 1000;" } else { "display: none;" }>
+                <div style="background: #0f172a; border: 1px solid #ef4444; padding: 2rem; width: 85%; max-width: 320px; border-radius: 16px; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                    <i class="fas fa-tools" style="font-size: 40px; color: #ef4444; margin-bottom: 12px;"></i>
+                    <h3 style="margin: 0 0 6px 0; color: white; font-size: 16px;">"Aktivasi Dev Mode"</h3>
+                    <p style="margin: 0 0 16px 0; color: #64748b; font-size: 12px;">"Masukkan password developer untuk mengaktifkan mode ini."</p>
+                    <input type="password"
+                        placeholder="Password Dev"
+                        style="border: 1px solid #334155; background: #1e293b; color: white; border-radius: 8px; padding: 10px 12px; font-size: 14px; width: 100%; box-sizing: border-box; margin-bottom: 8px;"
+                        prop:value=move || dev_password_input.get()
+                        on:input=move |ev| set_dev_password_input.set(event_target_value(&ev)) />
+                    {move || if dev_password_error.get() {
+                        view! { <p style="color: #ef4444; font-size: 12px; margin: 0 0 8px 0;">"Password salah!"</p> }.into_any()
+                    } else { view! { <span></span> }.into_any() }}
+                    <div style="display: flex; gap: 8px; margin-top: 4px;">
+                        <button on:click=move |_| {
+                            if dev_password_input.get() == DEV_PASSWORD {
+                                dev_mode.0.set(true);
+                                set_show_dev_modal.set(false);
+                                set_dev_password_input.set(String::new());
+                                set_dev_password_error.set(false);
+                            } else {
+                                set_dev_password_error.set(true);
+                            }
+                        } style="flex: 1; background: #ef4444; color: white; border: none; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer;">
+                            "Aktifkan"
+                        </button>
+                        <button on:click=move |_| {
+                            set_show_dev_modal.set(false);
+                            set_dev_password_input.set(String::new());
+                            set_dev_password_error.set(false);
+                        } style="flex: 1; background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 10px; border-radius: 8px; cursor: pointer;">
+                            "Batal"
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

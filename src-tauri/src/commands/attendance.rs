@@ -76,8 +76,26 @@ pub async fn clock_out(photo: String, lat: f64, lng: f64, db: State<'_, Mutex<Co
     if let Some(time_str) = clock_in_time_str {
         if let Ok(in_time) = DateTime::parse_from_rfc3339(&time_str) {
             let duration = now.signed_duration_since(in_time.with_timezone(&Local));
-            if duration.num_seconds() < 5 {
-                return Err(format!("Belum 5 detik. (Baru {} detik)", duration.num_seconds()));
+            
+            // Read minimum work duration in seconds from app_settings, default to 8 hours (28800 seconds)
+            let min_seconds: i64 = conn.query_row(
+                "SELECT value FROM app_settings WHERE key = 'min_work_seconds'",
+                [],
+                |row| row.get::<_, String>(0),
+            ).optional().unwrap_or(None)
+             .and_then(|v| v.parse::<i64>().ok())
+             .unwrap_or(28800);
+            
+            if duration.num_seconds() < min_seconds {
+                let remaining_seconds = min_seconds - duration.num_seconds();
+                let remaining_hours = remaining_seconds / 3600;
+                let remaining_mins = (remaining_seconds % 3600) / 60;
+                let remaining_secs = remaining_seconds % 60;
+                
+                return Err(format!(
+                    "Belum mencapai durasi kerja minimal. Tersisa {} jam {} menit {} detik.",
+                    remaining_hours, remaining_mins, remaining_secs
+                ));
             }
         }
     } else {

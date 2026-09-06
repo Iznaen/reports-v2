@@ -40,6 +40,14 @@ pub fn run() {
             commands::holidays::get_holidays,
             commands::holidays::add_holiday,
             commands::holidays::delete_holiday,
+            commands::dev::get_setting,
+            commands::dev::set_setting,
+            commands::dev::dev_get_attendance_by_month,
+            commands::dev::dev_upsert_attendance,
+            commands::dev::dev_delete_attendance,
+            commands::dev::dev_get_tasks_by_month,
+            commands::dev::dev_upsert_task,
+            commands::dev::dev_delete_task,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
