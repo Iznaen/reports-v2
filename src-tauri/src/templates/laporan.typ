@@ -62,9 +62,7 @@
           ]
         }
         #v(0.1cm)
-        #line(length: 100%, stroke: 0.5pt + black)
-        #v(0.1cm)
-        #text(weight: "bold", size: 9pt)[#name]
+        #underline(text(weight: "bold", size: 9pt)[#name])
         #linebreak()
         #text(size: 9pt)[NI. #ni]
       ]

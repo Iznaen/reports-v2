@@ -310,6 +310,15 @@ pub fn ReportPrint() -> impl IntoView {
 
     view! {
         <div style="background-color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Inter', sans-serif;">
+            <style>
+                "
+                .svg-wrapper svg {
+                    width: 100% !important;
+                    height: auto !important;
+                    display: block;
+                }
+                "
+            </style>
 
             // ========== STICKY TOOLBAR ==========
             <div style="
@@ -447,6 +456,7 @@ pub fn ReportPrint() -> impl IntoView {
                                         </div>
                                         // Render SVG inline — 100% identik dengan output PDF
                                         <div
+                                            class="svg-wrapper"
                                             style="
                                                 background: white;
                                                 box-shadow: 0 10px 30px rgba(0,0,0,0.15);
