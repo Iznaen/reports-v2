@@ -9,6 +9,7 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             let conn = db::init_db(app.handle())
                 .expect("Failed to initialize database");
@@ -33,8 +34,11 @@ pub fn run() {
             commands::tasks::add_task,
             commands::tasks::delete_task,
             commands::report::get_monthly_report_data,
-            commands::report::get_report_dashboard_data
+            commands::report::get_report_dashboard_data,
+            commands::gen_pdf::generate_report_preview,
+            commands::gen_pdf::export_report_pdf,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+

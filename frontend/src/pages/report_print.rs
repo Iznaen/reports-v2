@@ -8,10 +8,11 @@ use wasm_bindgen_futures::spawn_local;
 extern "C" {
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "core"])]
     async fn invoke(cmd: &str, args: JsValue) -> JsValue;
-
-    #[wasm_bindgen(js_namespace = window)]
-    fn printReportNuke();
 }
+
+// ============================================================
+// DATA TYPES — harus cocok dengan MonthlyReportData dari backend
+// ============================================================
 
 #[derive(Debug, serde::Deserialize, Clone)]
 pub struct EmployeeProfile {
@@ -36,11 +37,16 @@ pub struct DailyAttendance {
 
 #[derive(Debug, serde::Deserialize, Clone)]
 pub struct TaskRecord {
+    pub id: Option<i64>,
+    pub attendance_id: Option<i64>,
     pub date: String,
     pub time: String,
     pub task_name: String,
     pub output: String,
     pub notes: Option<String>,
+    pub photo_path: Option<String>,
+    pub latitude: Option<f64>,
+    pub longitude: Option<f64>,
 }
 
 #[derive(Debug, serde::Deserialize, Clone)]
@@ -64,6 +70,117 @@ pub struct MonthlyReportData {
     pub photos: Vec<PhotoItem>,
 }
 
+// ============================================================
+// PAYLOAD TYPES — dikirim ke gen_pdf commands di backend
+// ============================================================
+
+#[derive(serde::Serialize, Clone)]
+pub struct PdfAttRow {
+    pub no: u32,
+    pub day: String,
+    pub date: String,
+    pub in_time: String,
+    pub in_loc: String,
+    pub out_time: String,
+    pub out_loc: String,
+    pub status: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct PdfTaskRow {
+    pub no: u32,
+    pub date: String,
+    pub time: String,
+    pub task: String,
+    pub output: String,
+    pub notes: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+pub struct PdfPhoto {
+    pub photo_type: String,
+    pub date_str: String,
+    pub caption: String,
+    pub base64_data: String,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct PdfReportInput {
+    pub name: String,
+    pub ni: String,
+    pub position: String,
+    pub unit: String,
+    pub period: String,
+    pub date_str: String,
+    pub signature_base64: Option<String>,
+    pub att_rows: Vec<PdfAttRow>,
+    pub task_rows: Vec<PdfTaskRow>,
+    pub photos: Vec<PdfPhoto>,
+}
+
+// ============================================================
+// SVG PREVIEW RESULT
+// ============================================================
+
+#[derive(Debug, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SvgPreviewResult {
+    pub pages: Vec<String>,
+    pub page_count: usize,
+}
+
+// ============================================================
+// HELPER: Convert MonthlyReportData → PdfReportInput
+// ============================================================
+
+fn to_pdf_input(rpt: &MonthlyReportData, date_str: &str) -> PdfReportInput {
+    let name = rpt.profile.as_ref().map(|p| p.name.clone()).unwrap_or_default();
+    let ni = rpt.profile.as_ref().map(|p| p.ni.clone()).unwrap_or_default();
+    let position = rpt.profile.as_ref().map(|p| p.position.clone()).unwrap_or_default();
+    let unit = rpt.profile.as_ref().map(|p| p.work_unit.clone()).unwrap_or_default();
+
+    let att_rows = rpt.attendance_days.iter().map(|d| PdfAttRow {
+        no: d.no,
+        day: d.day_name.clone(),
+        date: d.date_str.clone(),
+        in_time: d.clock_in_time.clone().unwrap_or_else(|| "—".to_string()),
+        in_loc: d.clock_in_location.clone(),
+        out_time: d.clock_out_time.clone().unwrap_or_else(|| "—".to_string()),
+        out_loc: d.clock_out_location.clone(),
+        status: d.status.clone(),
+    }).collect();
+
+    let task_rows = rpt.tasks.iter().enumerate().map(|(i, t)| PdfTaskRow {
+        no: (i + 1) as u32,
+        date: t.date.clone(),
+        time: t.time.clone(),
+        task: t.task_name.clone(),
+        output: t.output.clone(),
+        notes: t.notes.clone().unwrap_or_else(|| "—".to_string()),
+    }).collect();
+
+    let photos = rpt.photos.iter().map(|p| PdfPhoto {
+        photo_type: p.photo_type.clone(),
+        date_str: p.date_str.clone(),
+        caption: p.caption.clone(),
+        base64_data: p.base64_data.clone(),
+    }).collect();
+
+    PdfReportInput {
+        name,
+        ni,
+        position,
+        unit,
+        period: rpt.period_name.clone(),
+        date_str: date_str.to_string(),
+        signature_base64: rpt.signature_base64.clone(),
+        att_rows,
+        task_rows,
+        photos,
+    }
+}
+
 fn indo_month(month: u32) -> &'static str {
     match month {
         1 => "Januari", 2 => "Februari", 3 => "Maret", 4 => "April",
@@ -72,6 +189,10 @@ fn indo_month(month: u32) -> &'static str {
         _ => "",
     }
 }
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
 
 #[component]
 pub fn ReportPrint() -> impl IntoView {
@@ -82,14 +203,24 @@ pub fn ReportPrint() -> impl IntoView {
     let (data, set_data) = signal::<Option<MonthlyReportData>>(None);
     let (loading, set_loading) = signal(true);
     let (error_msg, set_error_msg) = signal(String::new());
-    
-    // Editable Report Date (defaults to end of the month roughly)
+
+    // State preview SVG
+    let (preview_pages, set_preview_pages) = signal::<Vec<String>>(vec![]);
+    let (preview_loading, set_preview_loading) = signal(false);
+    let (preview_error, set_preview_error) = signal(String::new());
+
+    // State export PDF
+    let (exporting, set_exporting) = signal(false);
+    let (export_status, set_export_status) = signal(String::new());
+
+    // Tanggal pengesahan (editable)
     let (report_date, set_report_date) = signal(format!("Kendari, 30 {} {}", indo_month(month), year));
 
+    // Fetch data laporan saat load
     Effect::new(move |_| {
         spawn_local(async move {
             set_loading.set(true);
-            
+
             #[derive(serde::Serialize)]
             struct Args { year: i32, month: u32 }
             let args = serde_wasm_bindgen::to_value(&Args { year, month }).unwrap();
@@ -110,494 +241,228 @@ pub fn ReportPrint() -> impl IntoView {
         });
     });
 
-    let do_print = move |_| {
-        printReportNuke();
+    // ---- ACTION: Generate SVG Preview ----
+    let do_preview = move |_| {
+        let rpt = data.get_untracked();
+        let date = report_date.get_untracked();
+        if let Some(rpt) = rpt {
+            set_preview_loading.set(true);
+            set_preview_error.set(String::new());
+            set_preview_pages.set(vec![]);
+            let pdf_input = to_pdf_input(&rpt, &date);
+            spawn_local(async move {
+                #[derive(serde::Serialize)]
+                struct Args { input: PdfReportInput }
+                let args = serde_wasm_bindgen::to_value(&Args { input: pdf_input }).unwrap();
+                match invoke("generate_report_preview", args).await.dyn_into::<JsValue>() {
+                    Ok(res) => {
+                        if let Ok(result) = from_value::<SvgPreviewResult>(res) {
+                            set_preview_pages.set(result.pages);
+                        } else {
+                            set_preview_error.set("Gagal membaca hasil preview.".to_string());
+                        }
+                    }
+                    Err(e) => {
+                        set_preview_error.set(
+                            e.as_string().unwrap_or("Error membuat preview.".to_string())
+                        );
+                    }
+                }
+                set_preview_loading.set(false);
+            });
+        }
+    };
+
+    // ---- ACTION: Export PDF ----
+    let do_export = move |_| {
+        let rpt = data.get_untracked();
+        let date = report_date.get_untracked();
+        if let Some(rpt) = rpt {
+            set_exporting.set(true);
+            set_export_status.set(String::new());
+            let pdf_input = to_pdf_input(&rpt, &date);
+            spawn_local(async move {
+                #[derive(serde::Serialize)]
+                struct Args { input: PdfReportInput }
+                let args = serde_wasm_bindgen::to_value(&Args { input: pdf_input }).unwrap();
+                match invoke("export_report_pdf", args).await.dyn_into::<JsValue>() {
+                    Ok(res) => {
+                        let msg = res.as_string().unwrap_or_default();
+                        if msg == "cancelled" {
+                            set_export_status.set("Export dibatalkan.".to_string());
+                        } else {
+                            set_export_status.set(msg);
+                        }
+                    }
+                    Err(e) => {
+                        let err = e.as_string().unwrap_or_default();
+                        if err.contains("cancelled") {
+                            set_export_status.set("Export dibatalkan.".to_string());
+                        } else {
+                            set_export_status.set(format!("Error: {}", err));
+                        }
+                    }
+                }
+                set_exporting.set(false);
+            });
+        }
     };
 
     view! {
-        <div style="background-color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center;">
-            <style>
-                "
-                /* Sticky Toolbar */
-                .sticky-toolbar {
-                    position: sticky;
-                    top: 0;
-                    z-index: 9999;
-                    background: white;
-                    width: 100%;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                    padding: 16px 20px;
-                    display: flex;
-                    flex-direction: column;
-                    gap: 12px;
-                    box-sizing: border-box;
-                }
-                .toolbar-top {
-                    display: flex;
-                    justify-content: space-between;
-                    align-items: center;
-                }
-                .toolbar-bottom {
-                    display: flex;
-                    align-items: center;
-                    gap: 10px;
-                    background: #f8fafc;
-                    padding: 10px 15px;
-                    border-radius: 8px;
-                    border: 1px solid #e2e8f0;
-                }
-                .toolbar-bottom input {
-                    flex: 1;
-                    padding: 6px 12px;
-                    border: 1px solid #cbd5e1;
-                    border-radius: 6px;
-                    font-size: 14px;
-                }
-                
-                /* Page Container for Mobile Preview */
-                .report-preview-container {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: 24px;
-                    padding: 24px;
-                    width: 100%;
-                    box-sizing: border-box;
-                }
+        <div style="background-color: #e2e8f0; min-height: 100vh; display: flex; flex-direction: column; align-items: center; font-family: 'Inter', sans-serif;">
 
-                .page {
-                    background: white;
-                    width: 100%;
-                    max-width: 210mm; 
-                    min-height: 297mm;
-                    padding: 40px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.15);
-                    box-sizing: border-box;
-                    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-                    color: #1e293b;
-                    overflow: hidden;
-                    position: relative;
-                }
-
-                /* Modern Header */
-                .doc-header {
-                    text-align: center;
-                    border-bottom: 3px solid #1e3a8a;
-                    padding-bottom: 15px;
-                    margin-bottom: 25px;
-                }
-                .doc-header h1 {
-                    margin: 0;
-                    font-size: 16pt;
-                    font-weight: 800;
-                    color: #0f172a;
-                    text-transform: uppercase;
-                    letter-spacing: 1px;
-                }
-                .doc-header .subtitle {
-                    font-size: 11pt;
-                    color: #475569;
-                    margin-top: 5px;
-                    font-weight: 500;
-                }
-                
-                /* Profile Grid */
-                .profile-header {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 15px;
-                    background: #f8fafc;
-                    padding: 15px 20px;
-                    border-radius: 8px;
-                    border-left: 4px solid #3b82f6;
-                    margin-bottom: 25px;
-                    font-size: 10pt;
-                }
-                .profile-row { display: flex; gap: 8px; margin-bottom: 6px; }
-                .profile-label { font-weight: 700; color: #475569; width: 80px; }
-                .profile-val { font-weight: 600; color: #0f172a; }
-                
-                /* Section Title */
-                h2.section-title {
-                    font-size: 12pt;
-                    color: #1e3a8a;
-                    margin-bottom: 15px;
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                }
-                
-                /* Modern Table */
-                .table-wrap {
-                    width: 100%;
-                    margin-bottom: 30px;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    font-size: 9pt;
-                }
-                th {
-                    background-color: #1e3a8a;
-                    color: white;
-                    font-weight: 600;
-                    text-align: left;
-                    padding: 12px 8px; /* TWEAK HERE for Header Height (Screen) */
-                    border: 1px solid #1e3a8a;
-                }
-                td {
-                    border: 1px solid #cbd5e1;
-                    padding: 12px 8px; /* TWEAK HERE for Cell Height (Screen) */
-                    vertical-align: middle;
-                    color: #334155;
-                }
-                tr:nth-child(even) td { background-color: #f8fafc; }
-                .text-center { text-align: center; }
-                
-                /* Signature Modern Layout */
-                .signature-area {
-                    margin-top: 40px;
-                    float: right;
-                    width: 250px;
-                    text-align: center;
-                    font-size: 10pt;
-                    color: #0f172a;
-                }
-                .sig-date { margin-bottom: 8px; }
-                .sig-box {
-                    height: 80px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    margin: 5px 0;
-                }
-                .sig-box img { max-height: 100%; max-width: 100%; }
-                .sig-name {
-                    font-weight: 800;
-                    text-decoration: underline;
-                    margin-bottom: 4px;
-                }
-                .sig-ni {
-                    font-weight: 600;
-                    color: #475569;
-                }
-
-                .page-footer {
-                    position: absolute;
-                    bottom: 20px;
-                    left: 40px;
-                    right: 40px;
-                    text-align: right;
-                    font-size: 8pt;
-                    color: #94a3b8;
-                    border-top: 1px solid #e2e8f0;
-                    padding-top: 10px;
-                }
-                
-                /* Photo Grid */
-                .photo-grid {
-                    display: grid;
-                    grid-template-columns: repeat(2, 1fr);
-                    gap: 15px;
-                    margin-bottom: 30px;
-                }
-                .photo-item {
-                    border: 1px solid #e2e8f0;
-                    border-radius: 8px;
-                    padding: 10px;
-                    text-align: center;
-                    background: white;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.02);
-                }
-                .photo-item img {
-                    width: 100%;
-                    height: 160px;
-                    object-fit: cover;
-                    border-radius: 4px;
-                }
-                .photo-item .caption {
-                    font-size: 9pt;
-                    margin-top: 10px;
-                    font-weight: 600;
-                    color: #475569;
-                }
-
-                /* --- Strict Print Rules --- */
-                @media print {
-                  body, html { background: white !important; margin: 0; padding: 0; height: auto !important; }
-                  .no-print { display: none !important; }
-                  #app-nav-bar { display: none !important; }
-                  
-                  /* FIX FLEXBOX PAGINATION BUG: Browsers cannot paginate inside flex containers */
-                  div[style*=\"display: flex\"] { display: block !important; }
-                  .report-preview-container { 
-                      display: block !important; 
-                      padding: 0 !important; 
-                      margin: 0 !important; 
-                  }
-                  
-                  .page { 
-                    box-shadow: none !important; 
-                    margin: 0 !important; 
-                    padding: 0 !important; 
-                    page-break-after: always;
-                    page-break-inside: auto;
-                    width: 100% !important;
-                    max-width: 100% !important;
-                    position: static !important;
-                    height: auto !important;
-                    min-height: 0 !important;
-                  }
-
-                  .page-footer {
-                    position: static !important;
-                    margin-top: 20px !important;
-                  }
-                  
-                  @page {
-                    size: A4 portrait;
-                    margin: 15mm;
-                  }
-                  
-                  table { table-layout: auto !important; width: 100% !important; font-size: 8pt !important; page-break-inside: auto; }
-                  tr { page-break-inside: avoid; page-break-after: auto; }
-                  thead { display: table-header-group; }
-                  tfoot { display: table-footer-group; }
-                  th, td { padding: 10px 4px !important; /* TWEAK HERE for Cell Height (Print) */ }
-                  .signature-area { page-break-inside: avoid !important; } /* Prevents signature slicing */
-                }
-                "
-            </style>
-
-            <div class="no-print sticky-toolbar">
-                <div class="toolbar-top">
+            // ========== STICKY TOOLBAR ==========
+            <div style="
+                position: sticky; top: 0; z-index: 9999;
+                background: white; width: 100%;
+                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+                padding: 16px 20px; box-sizing: border-box;
+                display: flex; flex-direction: column; gap: 12px;
+            ">
+                // Baris atas: Kembali + tombol-tombol
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
                     <a href="/report" style="text-decoration: none; color: #64748b; display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px;">
                         <i class="fas fa-arrow-left"></i> "Kembali"
                     </a>
-                    <button 
-                        on:click=do_print
-                        style="background: #1e3a8a; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-weight: 700; font-size: 14px; cursor: pointer; box-shadow: 0 4px 6px rgba(30,58,138,0.2);"
-                    >
-                        <i class="fas fa-print" style="margin-right: 8px;"></i> "Cetak PDF"
-                    </button>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        // Tombol Preview
+                        <button
+                            on:click=do_preview
+                            disabled=move || preview_loading.get() || loading.get()
+                            style="background: #0f172a; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px;"
+                        >
+                            <i class="fas fa-eye"></i>
+                            {move || if preview_loading.get() { "Membuat Preview..." } else { "Preview PDF" }}
+                        </button>
+                        // Tombol Export
+                        <button
+                            on:click=do_export
+                            disabled=move || exporting.get() || loading.get()
+                            style="background: #1e3a8a; color: white; border: none; padding: 10px 18px; border-radius: 8px; font-weight: 700; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 8px;"
+                        >
+                            <i class="fas fa-file-pdf"></i>
+                            {move || if exporting.get() { "Menyimpan..." } else { "Export PDF" }}
+                        </button>
+                    </div>
                 </div>
-                <div class="toolbar-bottom">
+
+                // Baris tanggal pengesahan
+                <div style="display: flex; align-items: center; gap: 10px; background: #f8fafc; padding: 10px 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
                     <i class="fas fa-calendar-alt" style="color: #64748b;"></i>
                     <span style="font-weight: 600; font-size: 13px; color: #475569;">"Tgl Pengesahan:"</span>
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         placeholder="Contoh: Kendari, 30 September 2026"
-                        prop:value=move || report_date.get() 
-                        on:input=move |ev| set_report_date.set(event_target_value(&ev)) 
+                        prop:value=move || report_date.get()
+                        on:input=move |ev| set_report_date.set(event_target_value(&ev))
+                        style="flex: 1; padding: 6px 12px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 14px;"
                     />
                 </div>
+
+                // Status export / error preview
+                {move || {
+                    let status = export_status.get();
+                    let prev_err = preview_error.get();
+                    if !status.is_empty() {
+                        let color = if status.contains("Error") || status.contains("Gagal") { "#ef4444" } else { "#16a34a" };
+                        view! {
+                            <div style=format!("color: {}; font-size: 13px; font-weight: 600; padding: 6px 12px; background: #f8fafc; border-radius: 6px;", color)>
+                                {status}
+                            </div>
+                        }.into_any()
+                    } else if !prev_err.is_empty() {
+                        view! {
+                            <div style="color: #ef4444; font-size: 13px; font-weight: 600; padding: 6px 12px; background: #fef2f2; border-radius: 6px;">
+                                {prev_err}
+                            </div>
+                        }.into_any()
+                    } else {
+                        view! { <div></div> }.into_any()
+                    }
+                }}
             </div>
-            
-            {move || {
-                if loading.get() {
-                    return view! { <div style="text-align: center; padding: 40px;">"Memuat laporan..."</div> }.into_any();
-                }
-                if !error_msg.get().is_empty() {
-                    return view! { <div style="color: red; text-align: center;">{error_msg.get()}</div> }.into_any();
-                }
-                
-                if let Some(rpt) = data.get() {
-                    let prof_name = rpt.profile.as_ref().map(|p| p.name.clone()).unwrap_or("Tidak Ada".to_string());
-                    let prof_ni = rpt.profile.as_ref().map(|p| p.ni.clone()).unwrap_or("-".to_string());
-                    let prof_pos = rpt.profile.as_ref().map(|p| p.position.clone()).unwrap_or("-".to_string());
-                    let prof_unit = rpt.profile.as_ref().map(|p| p.work_unit.clone()).unwrap_or("-".to_string());
-                    let p_name = rpt.period_name.clone();
-                    let sig_img = rpt.signature_base64.clone();
-                    let active_date = report_date.get();
-                    
+
+            // ========== CONTENT AREA ==========
+            <div style="width: 100%; max-width: 900px; padding: 24px; box-sizing: border-box;">
+
+                {move || {
+                    if loading.get() {
+                        return view! {
+                            <div style="text-align: center; padding: 60px; color: #64748b; font-size: 16px;">
+                                <i class="fas fa-spinner fa-spin" style="margin-right: 10px;"></i>
+                                "Memuat data laporan..."
+                            </div>
+                        }.into_any();
+                    }
+                    if !error_msg.get().is_empty() {
+                        return view! {
+                            <div style="text-align: center; padding: 60px; color: #ef4444;">
+                                <i class="fas fa-exclamation-triangle" style="margin-right: 10px;"></i>
+                                {error_msg.get()}
+                            </div>
+                        }.into_any();
+                    }
+
+                    let pages = preview_pages.get();
+
+                    if preview_loading.get() {
+                        return view! {
+                            <div style="text-align: center; padding: 60px; color: #64748b; font-size: 16px;">
+                                <i class="fas fa-spinner fa-spin" style="margin-right: 10px;"></i>
+                                "Merender preview PDF... (mungkin perlu beberapa detik)"
+                            </div>
+                        }.into_any();
+                    }
+
+                    if pages.is_empty() {
+                        // Belum ada preview — tampilkan placeholder
+                        return view! {
+                            <div style="
+                                text-align: center; padding: 80px 40px;
+                                background: white; border-radius: 16px;
+                                box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+                                color: #64748b;
+                            ">
+                                <i class="fas fa-file-pdf" style="font-size: 48px; color: #cbd5e1; display: block; margin-bottom: 20px;"></i>
+                                <p style="font-size: 16px; font-weight: 600; margin: 0 0 8px;">"Preview belum dibuat"</p>
+                                <p style="font-size: 14px; margin: 0 0 24px;">"Klik tombol \"Preview PDF\" di atas untuk melihat hasil laporan sebelum mengexport."</p>
+                                <p style="font-size: 12px; color: #94a3b8; margin: 0;">"Proses ini mungkin membutuhkan beberapa detik karena laporan di-render sepenuhnya di backend."</p>
+                            </div>
+                        }.into_any();
+                    }
+
+                    // Tampilkan SVG pages
                     view! {
-                        <div class="report-preview-container">
-                            // ================= HALAMAN 1: PRESENSI =================
-                            <div class="page">
-                                <div class="doc-header">
-                                    <h1>"LAPORAN KINERJA DAN PRESENSI BULANAN"</h1>
-                                    <div class="subtitle">"Periode "{p_name.clone()}</div>
-                                </div>
-                                
-                                <div class="profile-header">
-                                    <div>
-                                        <div class="profile-row"><span class="profile-label">"Nama"</span><span class="profile-val">": " {prof_name.clone()}</span></div>
-                                        <div class="profile-row"><span class="profile-label">"NI / NIP"</span><span class="profile-val">": " {prof_ni.clone()}</span></div>
+                        <div style="display: flex; flex-direction: column; gap: 24px; align-items: center;">
+                            {pages.into_iter().enumerate().map(|(i, svg)| {
+                                view! {
+                                    <div style="width: 100%; position: relative;">
+                                        <div style="
+                                            position: absolute; top: -12px; left: 12px;
+                                            background: #1e3a8a; color: white;
+                                            font-size: 11px; font-weight: 700; padding: 2px 10px;
+                                            border-radius: 4px; z-index: 1;
+                                        ">
+                                            {format!("Halaman {}", i + 1)}
+                                        </div>
+                                        // Render SVG inline — 100% identik dengan output PDF
+                                        <div
+                                            style="
+                                                background: white;
+                                                box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+                                                border-radius: 4px;
+                                                overflow: hidden;
+                                                width: 100%;
+                                            "
+                                            inner_html=svg
+                                        ></div>
                                     </div>
-                                    <div>
-                                        <div class="profile-row"><span class="profile-label">"Jabatan"</span><span class="profile-val">": " {prof_pos.clone()}</span></div>
-                                        <div class="profile-row"><span class="profile-label">"Unit Kerja"</span><span class="profile-val">": " {prof_unit.clone()}</span></div>
-                                    </div>
-                                </div>
-                                
-                                <h2 class="section-title">"A. Rekapitulasi Presensi"</h2>
-                                <div class="table-wrap">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th style="width:5%;" class="text-center">"No"</th>
-                                                <th style="width:10%;">"Hari"</th>
-                                                <th style="width:15%;">"Tanggal"</th>
-                                                <th style="width:10%;" class="text-center">"Jam Masuk"</th>
-                                                <th style="width:15%;">"Lokasi Masuk"</th>
-                                                <th style="width:10%;" class="text-center">"Jam Pulang"</th>
-                                                <th style="width:15%;">"Lokasi Pulang"</th>
-                                                <th style="width:20%;">"Keterangan"</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {rpt.attendance_days.into_iter().map(|d| {
-                                                view! {
-                                                    <tr>
-                                                        <td class="text-center">{d.no}</td>
-                                                        <td>{d.day_name}</td>
-                                                        <td>{d.date_str}</td>
-                                                        <td class="text-center">{d.clock_in_time.unwrap_or("—".to_string())}</td>
-                                                        <td>{d.clock_in_location}</td>
-                                                        <td class="text-center">{d.clock_out_time.unwrap_or("—".to_string())}</td>
-                                                        <td>{d.clock_out_location}</td>
-                                                        <td>{d.status}</td>
-                                                    </tr>
-                                                }
-                                            }).collect_view()}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                
-                                <div class="signature-area">
-                                    <div class="sig-date">{active_date.clone()}</div>
-                                    <div class="sig-box">
-                                        {if let Some(ref b64) = sig_img {
-                                            view! { <img src=b64.clone() alt="Tanda Tangan" /> }.into_any()
-                                        } else {
-                                            view! { <div style="color: #94a3b8; font-style: italic;">"(Belum ada ttd)"</div> }.into_any()
-                                        }}
-                                    </div>
-                                    <div class="sig-name">{prof_name.clone()}</div>
-                                    <div class="sig-ni">"NI. "{prof_ni.clone()}</div>
-                                </div>
-                                
-                            </div>
-
-                            // ================= HALAMAN 2: LOGBOOK =================
-                            <div class="page">
-                                <div class="doc-header">
-                                    <h1>"LAPORAN KINERJA DAN PRESENSI BULANAN"</h1>
-                                    <div class="subtitle">"Periode "{p_name.clone()}</div>
-                                </div>
-
-                                <div class="profile-header">
-                                    <div>
-                                        <div class="profile-row"><span class="profile-label">"Nama"</span><span class="profile-val">": " {prof_name.clone()}</span></div>
-                                        <div class="profile-row"><span class="profile-label">"NI / NIP"</span><span class="profile-val">": " {prof_ni.clone()}</span></div>
-                                    </div>
-                                    <div>
-                                        <div class="profile-row"><span class="profile-label">"Jabatan"</span><span class="profile-val">": " {prof_pos.clone()}</span></div>
-                                        <div class="profile-row"><span class="profile-label">"Unit Kerja"</span><span class="profile-val">": " {prof_unit.clone()}</span></div>
-                                    </div>
-                                </div>
-                                
-                                <h2 class="section-title">"B. Logbook Kegiatan Harian"</h2>
-                                <div class="table-wrap">
-                                    <table>
-                                        <thead>
-                                            <tr>
-                                                <th style="width:5%;" class="text-center">"No"</th>
-                                                <th style="width:15%;">"Tanggal"</th>
-                                                <th style="width:10%;" class="text-center">"Jam"</th>
-                                                <th style="width:30%;">"Uraian Tugas"</th>
-                                                <th style="width:25%;">"Output"</th>
-                                                <th style="width:15%;">"Keterangan"</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {
-                                                let mut i = 1;
-                                                rpt.tasks.into_iter().map(|t| {
-                                                    let cur_i = i;
-                                                    i += 1;
-                                                    view! {
-                                                        <tr>
-                                                            <td class="text-center">{cur_i}</td>
-                                                            <td>{t.date}</td>
-                                                            <td class="text-center">{t.time}</td>
-                                                            <td>{t.task_name}</td>
-                                                            <td>{t.output}</td>
-                                                            <td>{t.notes.unwrap_or("—".to_string())}</td>
-                                                        </tr>
-                                                    }
-                                                }).collect_view()
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
-                                
-                                <div class="signature-area">
-                                    <div class="sig-date">{active_date.clone()}</div>
-                                    <div class="sig-box">
-                                        {if let Some(ref b64) = sig_img {
-                                            view! { <img src=b64.clone() alt="Tanda Tangan" /> }.into_any()
-                                        } else {
-                                            view! { <div style="color: #94a3b8; font-style: italic;">"(Belum ada ttd)"</div> }.into_any()
-                                        }}
-                                    </div>
-                                    <div class="sig-name">{prof_name.clone()}</div>
-                                    <div class="sig-ni">"NI. "{prof_ni.clone()}</div>
-                                </div>
-                                
-                            </div>
-                            
-                            // ================= HALAMAN 3: LAMPIRAN FOTO =================
-                            <div class="page">
-                                <div class="doc-header">
-                                    <h1>"LAPORAN KINERJA DAN PRESENSI BULANAN"</h1>
-                                    <div class="subtitle">"Periode "{p_name.clone()}" – Lampiran Dokumentasi"</div>
-                                </div>
-
-                                <div class="profile-header">
-                                    <div>
-                                        <div class="profile-row"><span class="profile-label">"Nama"</span><span class="profile-val">": " {prof_name.clone()}</span></div>
-                                        <div class="profile-row"><span class="profile-label">"NI / NIP"</span><span class="profile-val">": " {prof_ni.clone()}</span></div>
-                                    </div>
-                                    <div>
-                                        <div class="profile-row"><span class="profile-label">"Jabatan"</span><span class="profile-val">": " {prof_pos.clone()}</span></div>
-                                        <div class="profile-row"><span class="profile-label">"Unit Kerja"</span><span class="profile-val">": " {prof_unit.clone()}</span></div>
-                                    </div>
-                                </div>
-                                
-                                <h2 class="section-title">"C. Lampiran Foto Dokumentasi"</h2>
-                                <div class="photo-grid">
-                                    {rpt.photos.into_iter().map(|p| {
-                                        view! {
-                                            <div class="photo-item">
-                                                <img src=p.base64_data alt=p.photo_type />
-                                                <div class="caption">{p.caption}</div>
-                                            </div>
-                                        }
-                                    }).collect_view()}
-                                </div>
-                                
-                                <div class="signature-area">
-                                    <div class="sig-date">{active_date.clone()}</div>
-                                    <div class="sig-box">
-                                        {if let Some(ref b64) = sig_img {
-                                            view! { <img src=b64.clone() alt="Tanda Tangan" /> }.into_any()
-                                        } else {
-                                            view! { <div style="color: #94a3b8; font-style: italic;">"(Belum ada ttd)"</div> }.into_any()
-                                        }}
-                                    </div>
-                                    <div class="sig-name">{prof_name.clone()}</div>
-                                    <div class="sig-ni">"NI. "{prof_ni.clone()}</div>
-                                </div>
-                                
-                            </div>
-
+                                }
+                            }).collect_view()}
                         </div>
                     }.into_any()
-                } else {
-                    view! { <div></div> }.into_any()
-                }
-            }}
+                }}
+            </div>
         </div>
     }
 }
