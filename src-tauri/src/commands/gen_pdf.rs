@@ -29,9 +29,8 @@ pub struct PdfAttRow {
     pub day: String,
     pub date: String,
     pub in_time: String,
-    pub in_loc: String,
     pub out_time: String,
-    pub out_loc: String,
+    pub work_hours: String,
     pub status: String,
 }
 
@@ -78,9 +77,8 @@ fn att_row_to_dict(r: &PdfAttRow) -> Value {
     d.insert("day".into(),      r.day.clone().into_value());
     d.insert("date".into(),     r.date.clone().into_value());
     d.insert("in_time".into(),  r.in_time.clone().into_value());
-    d.insert("in_loc".into(),   r.in_loc.clone().into_value());
     d.insert("out_time".into(), r.out_time.clone().into_value());
-    d.insert("out_loc".into(),  r.out_loc.clone().into_value());
+    d.insert("work_hours".into(), r.work_hours.clone().into_value());
     d.insert("status".into(),   r.status.clone().into_value());
     Value::Dict(d)
 }

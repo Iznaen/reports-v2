@@ -81,7 +81,7 @@ pub fn Report() -> impl IntoView {
                     
                     if let Some(dashboard) = data.get() {
                         let prof_name = dashboard.profile.as_ref().map(|p| p.name.clone()).unwrap_or("Tidak Ada".to_string());
-                        let prof_unit = dashboard.profile.as_ref().map(|p| p.work_unit.clone()).unwrap_or("-".to_string());
+                        let prof_unit = dashboard.profile.as_ref().map(|p| p.position.clone()).unwrap_or("-".to_string());
                         
                         view! {
                             <div style="display: flex; flex-direction: column; gap: 20px; padding-bottom: 40px;">

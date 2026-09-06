@@ -280,19 +280,71 @@
                           
                           ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight, 0, 0, targetWidth, targetHeight);
                           
-                          // Simple bottom-right watermark for tasks
+                          // Draw Watermark (Standardized)
                           const now = new Date();
-                          const timestamp = now.getDate() + '/' + (now.getMonth()+1) + '/' + now.getFullYear() + ' ' + 
-                                            String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
-                          const coordStr = lat.toFixed(5) + ", " + lng.toFixed(5);
+                          const hariIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                          const bulanIndo = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
                           
-                          ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
-                          const textWidth = Math.max(ctx.measureText(timestamp).width, ctx.measureText(coordStr).width) + 80;
-                          ctx.fillRect(targetWidth - textWidth - 10, targetHeight - 50, textWidth, 40);
+                          const hari = hariIndo[now.getDay()];
+                          const tanggal = now.getDate() + ' ' + bulanIndo[now.getMonth()] + ' ' + now.getFullYear();
+                          const jam = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+                          
+                          // Top badge
+                          ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+                          ctx.beginPath();
+                          if (ctx.roundRect) {
+                              ctx.roundRect(20, 20, 180, 40, 8);
+                          } else {
+                              ctx.rect(20, 20, 180, 40);
+                          }
+                          ctx.fill();
+                          ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                          ctx.stroke();
                           
                           ctx.fillStyle = "#ffffff";
-                          ctx.font = "14px sans-serif";
-                          ctx.fillText(timestamp + " | " + coordStr, targetWidth - textWidth, targetHeight - 25);
+                          ctx.font = "bold 20px sans-serif";
+                          ctx.fillText("KEGIATAN", 35, 47);
+                          
+                          // Bottom bar
+                          ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                          ctx.beginPath();
+                          if (ctx.roundRect) {
+                              ctx.roundRect(20, targetHeight - 90, targetWidth - 40, 70, 10);
+                          } else {
+                              ctx.rect(20, targetHeight - 90, targetWidth - 40, 70);
+                          }
+                          ctx.fill();
+                          
+                          ctx.fillStyle = "#ffffff";
+                          ctx.font = "16px sans-serif";
+                          ctx.globalAlpha = 0.9;
+                          ctx.fillText(hari, 35, targetHeight - 65);
+                          
+                          ctx.font = "bold 16px sans-serif";
+                          ctx.globalAlpha = 1.0;
+                          ctx.fillText(tanggal, 35, targetHeight - 40);
+                          
+                          const tangWidth = ctx.measureText(tanggal).width;
+                          ctx.font = "16px sans-serif";
+                          ctx.globalAlpha = 0.8;
+                          ctx.fillText(jam, 35 + tangWidth + 15, targetHeight - 40);
+                          
+                          const coordStr = lat.toFixed(5) + ", " + lng.toFixed(5);
+                          ctx.font = "14px 'Courier New', monospace";
+                          const coordWidth = ctx.measureText(coordStr).width;
+                          
+                          ctx.fillStyle = "rgba(255, 255, 255, 0.1)";
+                          ctx.beginPath();
+                          if (ctx.roundRect) {
+                              ctx.roundRect(targetWidth - coordWidth - 45, targetHeight - 55, coordWidth + 20, 24, 12);
+                          } else {
+                              ctx.rect(targetWidth - coordWidth - 45, targetHeight - 55, coordWidth + 20, 24);
+                          }
+                          ctx.fill();
+                          
+                          ctx.fillStyle = "#ffffff";
+                          ctx.globalAlpha = 0.85;
+                          ctx.fillText(coordStr, targetWidth - coordWidth - 35, targetHeight - 38);
                           
                           const base64Data = canvas.toDataURL("image/jpeg", 0.8);
                           resolve({ base64Data, lat, lng });

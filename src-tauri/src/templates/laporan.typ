@@ -105,20 +105,29 @@
 #section_title[A. Rekapitulasi Presensi]
 
 #table(
-  columns: (0pt, 0.7cm, 1.4cm, 2cm, 1.8cm, 3cm, 1.8cm, 3cm, 2.5cm),
+  columns: (0pt, 0.7cm, 1.5cm, 2.2cm, 2cm, 2cm, 2.5cm, 5.1cm),
   stroke: (col, row) => if col == 0 { none } else { 0.5pt + border_color },
-  fill: (col, row) => if row == 0 { header_fill } else if calc.odd(row) { row_alt_fill } else { white },
+  fill: (col, row) => {
+    if row == 0 { return header_fill }
+    if row <= att_rows.len() {
+      let stat = att_rows.at(row - 1).status
+      if stat == "Hadir" { return rgb("e6ffe6") }
+      if stat == "Alpha" { return rgb("ffe6e6") }
+      if stat == "Parsial" { return rgb("ffffe6") }
+      if stat.starts-with("Libur") { return rgb("f2e6ff") }
+    }
+    return white
+  },
   inset: (col, row) => if col == 0 { 0pt } else { (x: 0.3cm, y: 0.25cm) },
-  align: (col, row) => if col == 1 or col == 4 or col == 6 { center } else { left },
+  align: (col, row) => if col == 1 or col == 4 or col == 5 { center } else { left },
   table.header(
     [], // dummy col
     text(fill: white, weight: "bold", size: 9pt)[No],
     text(fill: white, weight: "bold", size: 9pt)[Hari],
     text(fill: white, weight: "bold", size: 9pt)[Tanggal],
-    text(fill: white, weight: "bold", size: 9pt)[Jam Masuk],
-    text(fill: white, weight: "bold", size: 9pt)[Lokasi Masuk],
-    text(fill: white, weight: "bold", size: 9pt)[Jam Pulang],
-    text(fill: white, weight: "bold", size: 9pt)[Lokasi Pulang],
+    text(fill: white, weight: "bold", size: 9pt)[Jam\ Masuk],
+    text(fill: white, weight: "bold", size: 9pt)[Jam\ Pulang],
+    text(fill: white, weight: "bold", size: 9pt)[Durasi Kerja\ (Jam:Menit)],
     text(fill: white, weight: "bold", size: 9pt)[Keterangan],
   ),
   ..att_rows.enumerate().map(pair => {
@@ -140,14 +149,13 @@
       text(size: 9pt)[#r.no],
       text(size: 9pt)[#r.day],
       text(size: 9pt)[#r.date],
-      text(size: 9pt)[#r.in_time],
-      text(size: 9pt)[#r.in_loc],
-      text(size: 9pt)[#r.out_time],
-      text(size: 9pt)[#r.out_loc],
+      text(size: 9pt)[#if r.in_time == "—" { [—] } else { r.in_time }],
+      text(size: 9pt)[#if r.out_time == "—" { [—] } else { r.out_time }],
+      text(size: 9pt)[#r.work_hours],
       text(size: 9pt)[#r.status],
     )
   }).flatten(),
-  table.cell(colspan: 8, stroke: none, inset: 0pt)[
+  table.cell(colspan: 7, stroke: none, inset: 0pt)[
     #signature_block(date_str, name, ni, sig_bytes)
   ]
 )

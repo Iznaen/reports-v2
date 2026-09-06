@@ -15,9 +15,8 @@ pub struct DailyAttendance {
     pub day_name: String,
     pub date_str: String,
     pub clock_in_time: Option<String>,
-    pub clock_in_location: String,
     pub clock_out_time: Option<String>,
-    pub clock_out_location: String,
+    pub work_hours: String,
     pub status: String,
 }
 
@@ -63,14 +62,7 @@ fn indo_month(month: u32) -> &'static str {
     }
 }
 
-fn short_indo_month(month: u32) -> &'static str {
-    match month {
-        1 => "Jan", 2 => "Feb", 3 => "Mar", 4 => "Apr",
-        5 => "Mei", 6 => "Jun", 7 => "Jul", 8 => "Agu",
-        9 => "Sep", 10 => "Okt", 11 => "Nov", 12 => "Des",
-        _ => "",
-    }
-}
+
 
 fn format_time(t: &str) -> String {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(t) {
@@ -121,21 +113,21 @@ pub async fn get_monthly_report_data(
     // 3. Fetch all attendance for the month
     let month_prefix = format!("{:04}-{:02}-%", year, month);
     let mut att_stmt = conn.prepare(
-        "SELECT date, clock_in_time, clock_in_flag, clock_in_photo, 
-                clock_out_time, clock_out_flag, clock_out_photo, status 
+        "SELECT date, clock_in_time, clock_in_photo, 
+                clock_out_time, clock_out_photo
          FROM attendance_records 
          WHERE date LIKE ?1"
     ).map_err(|e| e.to_string())?;
 
     struct RawAtt {
-        date: String, in_time: Option<String>, in_loc: Option<String>, in_photo: Option<String>,
-        out_time: Option<String>, out_loc: Option<String>, out_photo: Option<String>, status: String,
+        date: String, in_time: Option<String>, in_photo: Option<String>,
+        out_time: Option<String>, out_photo: Option<String>,
     }
 
     let raw_attendances = att_stmt.query_map([&month_prefix], |row| {
         Ok(RawAtt {
-            date: row.get(0)?, in_time: row.get(1)?, in_loc: row.get(2)?, in_photo: row.get(3)?,
-            out_time: row.get(4)?, out_loc: row.get(5)?, out_photo: row.get(6)?, status: row.get(7)?
+            date: row.get(0)?, in_time: row.get(1)?, in_photo: row.get(2)?,
+            out_time: row.get(3)?, out_photo: row.get(4)?
         })
     }).map_err(|e| e.to_string())?.filter_map(Result::ok).collect::<Vec<_>>();
 
@@ -166,18 +158,35 @@ pub async fn get_monthly_report_data(
     for day in 1..=num_days {
         let date_obj = NaiveDate::from_ymd_opt(year, month, day).unwrap();
         let date_key = format!("{:04}-{:02}-{:02}", year, month, day);
-        let date_str_indo = format!("{} {} {}", day, short_indo_month(month), year);
+        let date_str_indo = format!("{} {} {}", day, indo_month(month), year);
         
-        let mut row_status = "Alpha (tanpa keterangan)".to_string();
+        let wd = date_obj.weekday();
+        let mut row_status = if wd == Weekday::Sat || wd == Weekday::Sun {
+            "Libur Akhir Pekan".to_string()
+        } else {
+            "Alpha".to_string()
+        };
         let mut in_t = None; let mut out_t = None;
-        let mut in_l = "—".to_string(); let mut out_l = "—".to_string();
+        let mut work_hours = "—".to_string();
 
         if let Some(att) = att_map.get(&date_key) {
-            row_status = att.status.clone();
+            if att.in_time.is_some() && att.out_time.is_some() {
+                row_status = "Hadir".to_string();
+            } else if att.in_time.is_some() || att.out_time.is_some() {
+                row_status = "Parsial".to_string();
+            }
+            
             in_t = att.in_time.as_ref().map(|t| format_time(t));
             out_t = att.out_time.as_ref().map(|t| format_time(t));
-            if let Some(l) = &att.in_loc { in_l = l.clone(); }
-            if let Some(l) = &att.out_loc { out_l = l.clone(); }
+            
+            if let (Some(in_str), Some(out_str)) = (&att.in_time, &att.out_time) {
+                if let (Ok(in_dt), Ok(out_dt)) = (chrono::DateTime::parse_from_rfc3339(in_str), chrono::DateTime::parse_from_rfc3339(out_str)) {
+                    let diff = out_dt.signed_duration_since(in_dt);
+                    let hours = diff.num_hours();
+                    let minutes = diff.num_minutes() % 60;
+                    work_hours = format!("{:02}:{:02}", hours, minutes);
+                }
+            }
 
             // Extract Photos
             let full_date_str = format!("{} {} {}", day, indo_month(month), year);
@@ -203,10 +212,6 @@ pub async fn get_monthly_report_data(
                 });
             }
         } else {
-            let wd = date_obj.weekday();
-            if wd == Weekday::Sat || wd == Weekday::Sun {
-                row_status = "Libur Akhir Pekan".to_string();
-            }
             // TODO: In the future, check a Holiday/Leave table here to override "Alpha" -> "Cuti/Sakit"
         }
 
@@ -215,9 +220,8 @@ pub async fn get_monthly_report_data(
             day_name: indo_weekday(date_obj.weekday()).to_string(),
             date_str: date_str_indo.clone(),
             clock_in_time: in_t,
-            clock_in_location: in_l,
             clock_out_time: out_t,
-            clock_out_location: out_l,
+            work_hours: work_hours,
             status: row_status,
         });
     }

@@ -29,9 +29,8 @@ pub struct DailyAttendance {
     pub day_name: String,
     pub date_str: String,
     pub clock_in_time: Option<String>,
-    pub clock_in_location: String,
     pub clock_out_time: Option<String>,
-    pub clock_out_location: String,
+    pub work_hours: String,
     pub status: String,
 }
 
@@ -80,9 +79,8 @@ pub struct PdfAttRow {
     pub day: String,
     pub date: String,
     pub in_time: String,
-    pub in_loc: String,
     pub out_time: String,
-    pub out_loc: String,
+    pub work_hours: String,
     pub status: String,
 }
 
@@ -145,16 +143,15 @@ fn to_pdf_input(rpt: &MonthlyReportData, date_str: &str) -> PdfReportInput {
         day: d.day_name.clone(),
         date: d.date_str.clone(),
         in_time: d.clock_in_time.clone().unwrap_or_else(|| "—".to_string()),
-        in_loc: d.clock_in_location.clone(),
         out_time: d.clock_out_time.clone().unwrap_or_else(|| "—".to_string()),
-        out_loc: d.clock_out_location.clone(),
+        work_hours: d.work_hours.clone(),
         status: d.status.clone(),
     }).collect();
 
     let task_rows = rpt.tasks.iter().enumerate().map(|(i, t)| PdfTaskRow {
         no: (i + 1) as u32,
         date: t.date.clone(),
-        time: t.time.clone(),
+        time: t.time.chars().take(5).collect(),
         task: t.task_name.clone(),
         output: t.output.clone(),
         notes: t.notes.clone().unwrap_or_else(|| "—".to_string()),
