@@ -7,7 +7,6 @@ use crate::components::map::MapPicker;
 use crate::app::DevMode;
 
 // You can edit this password later!
-const ADMIN_PASSWORD: &str = "s1g4b0rt";
 const DEV_PASSWORD: &str = "s1g4b0rt";
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -66,9 +65,7 @@ pub fn Settings() -> impl IntoView {
     let (dev_password_error, set_dev_password_error) = signal(false);
 
     // Modals State
-    let (show_password_modal, set_show_password_modal) = signal(false);
-    let (password_input, set_password_input) = signal(String::new());
-    let (password_error, set_password_error) = signal(false);
+
     
     let (show_map, set_show_map) = signal(false);
     let (show_sig_modal, set_show_sig_modal) = signal(false);
@@ -159,18 +156,6 @@ pub fn Settings() -> impl IntoView {
                 }
             }
         });
-    };
-
-    let verify_password = move |_| {
-        if password_input.get() == ADMIN_PASSWORD {
-            set_show_password_modal.set(false);
-            set_password_error.set(false);
-            set_password_input.set(String::new());
-            set_show_map.set(true);
-            resetLeafletMap();
-        } else {
-            set_password_error.set(true);
-        }
     };
 
     view! {
@@ -371,26 +356,22 @@ pub fn Settings() -> impl IntoView {
                         }).collect_view()}
                     </div>
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <button on:click=move |_| {
-                            if dev_mode.0.get() {
-                                set_show_map.set(true);
-                                resetLeafletMap();
-                            } else {
-                                set_show_password_modal.set(true);
-                            }
-                        } style="background: #e9edf2; color: #334155; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                            <i class="fas fa-plus"></i> "Tambah Lokasi"
-                        </button>
                         {move || if dev_mode.0.get() {
                             view! {
+                                <button on:click=move |_| {
+                                    set_show_map.set(true);
+                                    resetLeafletMap();
+                                } style="background: #e9edf2; color: #334155; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                                    <i class="fas fa-plus"></i> "Tambah Lokasi"
+                                </button>
                                 <span style="background: #fef2f2; color: #ef4444; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                                    <i class="fas fa-unlock-alt"></i> "Dev Mode"
+                                    <i class="fas fa-unlock-alt"></i> "Dev Mode Akses Penuh"
                                 </span>
                             }.into_any()
                         } else {
                             view! {
                                 <span style="background: #f1f5f9; color: #64748b; border: none; padding: 8px 16px; border-radius: 100px; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
-                                    <i class="fas fa-lock"></i> "Admin"
+                                    <i class="fas fa-lock"></i> "Admin Only"
                                 </span>
                             }.into_any()
                         }}
@@ -524,26 +505,7 @@ pub fn Settings() -> impl IntoView {
                     <button on:click=move |_| set_show_sig_modal.set(false) style="margin-top: 0.5rem; background: #e2e8f0; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">"Tutup / Selesai"</button>
                 </div>
 
-                // --- Password Modal ---
-                <div style=move || if show_password_modal.get() { "display: block; border: 1px solid black; padding: 1rem; margin-top: 1rem; background: #fff;" } else { "display: none;" }>
-                    <h4 style="margin-top: 0;">"Otorisasi Admin"</h4>
-                    <p style="font-size: 14px; color: #64748b;">"Masukkan password untuk menambahkan lokasi kantor baru."</p>
-                    <input type="password" 
-                        placeholder="Password Admin"
-                        style="border: 1px solid #cbd5e1; padding: 8px; border-radius: 4px; width: 100%; margin-bottom: 8px;"
-                        prop:value=move || password_input.get()
-                        on:input=move |ev| set_password_input.set(event_target_value(&ev)) />
-                    <div style="display: flex; gap: 8px;">
-                        <button on:click=verify_password style="background: #1a3a5c; color: white; border: none; padding: 8px 16px; border-radius: 4px;">"Verifikasi"</button>
-                        <button on:click=move |_| {
-                            set_show_password_modal.set(false);
-                            set_password_error.set(false);
-                        } style="background: #e2e8f0; border: none; padding: 8px 16px; border-radius: 4px;">"Batal"</button>
-                    </div>
-                    <p style="color: red; font-size: 12px; margin-top: 8px;">
-                        {move || if password_error.get() { "Password salah!" } else { "" }}
-                    </p>
-                </div>
+
 
                 // --- Map UI (Task 2.2 Leaflet) ---
                 <div style=move || if show_map.get() { "display: block; border: 1px solid blue; padding: 1rem; margin-top: 1rem; background: #fff;" } else { "display: none;" }>

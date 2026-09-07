@@ -9,7 +9,7 @@
 #set page(
   paper: "a4",
   margin: (top: 2cm, bottom: 2cm, left: 2.5cm, right: 2.5cm),
-  fill: rgb("#f8fafc"), // latar halaman abu-abu sangat terang
+  fill: rgb("#ffffff"), // latar halaman putih murni
   footer: context [
     #set text(font: ("Inter", "Helvetica", "Arial"), size: 8pt, fill: rgb("#94a3b8"))
     #align(center)[
@@ -57,24 +57,17 @@
 #let profile_table(name, ni, position, unit) = {
   card[
     #grid(
-      columns: (1fr, 1fr),
-      gutter: 0.5cm,
-      [
-        #grid(columns: (3.2cm, 1fr), gutter: 0.2cm,
-          text(fill: text-muted, weight: "regular", size: 9.5pt)[Nama Lengkap],
-          [: #text(weight: "bold", size: 10.5pt)[#name]],
-          text(fill: text-muted, weight: "regular", size: 9.5pt)[NI / NIP],
-          [: #text(weight: "bold", size: 10.5pt)[#ni]],
-        )
-      ],
-      [
-        #grid(columns: (3.2cm, 1fr), gutter: 0.2cm,
-          text(fill: text-muted, weight: "regular", size: 9.5pt)[Jabatan],
-          [: #text(weight: "bold", size: 10.5pt)[#position]],
-          text(fill: text-muted, weight: "regular", size: 9.5pt)[Unit Kerja],
-          [: #text(weight: "bold", size: 10.5pt)[#unit]],
-        )
-      ]
+      columns: (2.8cm, 1fr), 
+      row-gutter: 0.2cm,
+      column-gutter: 0.2cm,
+      text(fill: text-muted, weight: "regular", size: 9.5pt)[Nama],
+      [: #text(weight: "bold", size: 10.5pt)[#name]],
+      text(fill: text-muted, weight: "regular", size: 9.5pt)[NI / NIP],
+      [: #text(weight: "bold", size: 10.5pt)[#ni]],
+      text(fill: text-muted, weight: "regular", size: 9.5pt)[Jabatan],
+      [: #text(weight: "bold", size: 10.5pt)[#position]],
+      text(fill: text-muted, weight: "regular", size: 9.5pt)[Unit Kerja],
+      [: #text(weight: "bold", size: 10.5pt)[#unit]],
     )
   ]
   v(0.5cm)
@@ -139,7 +132,7 @@
     #text(size: 11pt, fill: rgb("#bfdbfe"))[Periode #period]
   ]
 ]
-#v(0.8cm)
+#v(0.2cm)
 
 // =====================================================================
 // BAGIAN A: REKAPITULASI PRESENSI
@@ -203,7 +196,13 @@
         text(size: 9.5pt)[#r.status],
       )
     }).flatten(),
-    table.cell(colspan: 7, stroke: none, inset: 0pt)[
+    // --- PENTING ---
+    // TTD sengaja dimasukkan ke dalam baris terakhir tabel (di-wrap dengan table.cell) 
+    // bersamaan dengan dummy column hack di atasnya,
+    // ini bertujuan untuk mengikat (keep-with-next) TTD agar tidak tercetak sendirian 
+    // di halaman kosong (mencegah orphan signature) ketika baris data penuh.
+    // Jangan di-ekstrak keluar dari tabel!
+    table.cell(colspan: 7, stroke: none, inset: 0pt, fill: rgb("#ffffff"))[
       #signature_block(date_str, name, ni, sig_bytes)
     ]
   )
@@ -227,7 +226,7 @@
     #text(size: 10pt, fill: rgb("#bfdbfe"))[Periode #period]
   ]
 ]
-#v(0.8cm)
+#v(0.2cm)
 
 #profile_table(name, ni, position, unit)
 
@@ -273,7 +272,10 @@
         text(size: 9.5pt)[#r.notes],
       )
     }).flatten(),
-    table.cell(colspan: 6, stroke: none, inset: 0pt)[
+    // --- PENTING ---
+    // Sama seperti tabel presensi, TTD ini diikat ke dalam tabel
+    // untuk mencegah orphan signature di halaman baru. Jangan diekstrak!
+    table.cell(colspan: 6, stroke: none, inset: 0pt, fill: rgb("#ffffff"))[
       #signature_block(date_str, name, ni, sig_bytes)
     ]
   )
@@ -298,7 +300,7 @@
       #text(size: 10pt, fill: rgb("#bfdbfe"))[Periode #period – Lampiran Dokumentasi]
     ]
   ]
-  #v(0.8cm)
+  #v(0.2cm)
 
   #profile_table(name, ni, position, unit)
 
