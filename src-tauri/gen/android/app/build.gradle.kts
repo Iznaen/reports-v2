@@ -70,6 +70,14 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    
+    applicationVariants.all {
+        outputs.all {
+            val output = this as com.android.build.gradle.internal.api.ApkVariantOutputImpl
+            val abi = filters.find { it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI.name }?.identifier ?: "universal"
+            outputFileName = "Cakerja-v${defaultConfig.versionName}-${abi}-${name}.apk"
+        }
+    }
 }
 
 rust {
