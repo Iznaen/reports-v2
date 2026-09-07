@@ -64,12 +64,18 @@ pub fn Dev() -> impl IntoView {
     let (edit_att_is_new, set_edit_att_is_new) = signal(false);
     let (att_in_str, set_att_in_str) = signal(String::new());
     let (att_out_str, set_att_out_str) = signal(String::new());
+    let (att_photo_in, set_att_photo_in) = signal::<Option<String>>(None);   // base64
+    let (att_photo_out, set_att_photo_out) = signal::<Option<String>>(None);
+    let (att_photo_in_loading, set_att_photo_in_loading) = signal(false);
+    let (att_photo_out_loading, set_att_photo_out_loading) = signal(false);
 
     // Task Edit Modal
     let (show_task_modal, set_show_task_modal) = signal(false);
     let (edit_task, set_edit_task) = signal(TaskRecord::default());
     let (edit_task_is_new, set_edit_task_is_new) = signal(false);
     let (task_time_str, set_task_time_str) = signal(String::new());
+    let (task_photo, set_task_photo) = signal::<Option<String>>(None);       // base64
+    let (task_photo_loading, set_task_photo_loading) = signal(false);
 
     // --- Actions ---
 
@@ -173,6 +179,8 @@ pub fn Dev() -> impl IntoView {
         let att = edit_att.get_untracked();
         let in_val = att_in_str.get_untracked();
         let out_val = att_out_str.get_untracked();
+        let photo_in = att_photo_in.get_untracked();
+        let photo_out = att_photo_out.get_untracked();
         wasm_bindgen_futures::spawn_local(async move {
             #[derive(Serialize)]
             struct Args {
@@ -180,6 +188,8 @@ pub fn Dev() -> impl IntoView {
                 date: String,
                 #[serde(rename = "clockInTime")] clock_in_time: Option<String>,
                 #[serde(rename = "clockOutTime")] clock_out_time: Option<String>,
+                #[serde(rename = "clockInPhoto")] clock_in_photo: Option<String>,
+                #[serde(rename = "clockOutPhoto")] clock_out_photo: Option<String>,
                 status: String,
             }
             let clock_in = if in_val.len() >= 4 { Some(format!("{}T{}:00+08:00", att.date, in_val)) } else { None };
@@ -189,6 +199,8 @@ pub fn Dev() -> impl IntoView {
                 date: att.date.clone(),
                 clock_in_time: clock_in,
                 clock_out_time: clock_out,
+                clock_in_photo: photo_in,
+                clock_out_photo: photo_out,
                 status: att.status.clone(),
             }).unwrap();
             invoke("dev_upsert_attendance", args).await;
@@ -200,6 +212,7 @@ pub fn Dev() -> impl IntoView {
     let save_task = move |_| {
         let task = edit_task.get_untracked();
         let t_val = task_time_str.get_untracked();
+        let photo = task_photo.get_untracked();
         wasm_bindgen_futures::spawn_local(async move {
             #[derive(Serialize)]
             struct Args {
@@ -209,6 +222,7 @@ pub fn Dev() -> impl IntoView {
                 #[serde(rename = "taskName")] task_name: String,
                 output: String,
                 notes: Option<String>,
+                #[serde(rename = "photoPath")] photo_path: Option<String>,
             }
             let args = to_value(&Args {
                 id: if edit_task_is_new.get_untracked() { None } else { Some(task.id) },
@@ -217,12 +231,75 @@ pub fn Dev() -> impl IntoView {
                 task_name: task.task_name.clone(),
                 output: task.output.clone(),
                 notes: task.notes.clone().filter(|s| !s.is_empty()),
+                photo_path: photo,
             }).unwrap();
             invoke("dev_upsert_task", args).await;
             set_show_task_modal.set(false);
             load_tasks();
         });
     };
+
+    // ── Photo capture helpers ────────────────────────────────────────────────
+    // Calls window.captureDevPhoto(isCamera, badge, date, time) → Promise<base64>
+    let capture_att_photo = move |is_camera: bool, is_in: bool| {
+        let date = edit_att.get_untracked().date;
+        let time = if is_in { att_in_str.get_untracked() } else { att_out_str.get_untracked() };
+        let badge = if is_in { "Absensi Masuk" } else { "Absensi Pulang" };
+        let set_loading = if is_in { set_att_photo_in_loading } else { set_att_photo_out_loading };
+        let set_photo = if is_in { set_att_photo_in } else { set_att_photo_out };
+        wasm_bindgen_futures::spawn_local(async move {
+            set_loading.set(true);
+            let func = js_sys::Reflect::get(&web_sys::window().unwrap(), &JsValue::from_str("captureDevPhoto")).unwrap();
+            let func = func.dyn_into::<js_sys::Function>().unwrap();
+            let args = js_sys::Array::new();
+            args.push(&JsValue::from_bool(is_camera));
+            args.push(&JsValue::from_str(badge));
+            args.push(&JsValue::from_str(&date));
+            args.push(&JsValue::from_str(&time));
+            let promise = func.apply(&JsValue::NULL, &args).unwrap();
+            let promise = js_sys::Promise::from(promise);
+            match wasm_bindgen_futures::JsFuture::from(promise).await {
+                Ok(raw) => {
+                    if let Some(s) = raw.as_string() {
+                        set_photo.set(Some(s));
+                    }
+                }
+                Err(e) => {
+                    web_sys::console::warn_1(&e);
+                }
+            }
+            set_loading.set(false);
+        });
+    };
+
+    let capture_task_photo_fn = move |is_camera: bool| {
+        let date = edit_task.get_untracked().date;
+        let time = task_time_str.get_untracked();
+        wasm_bindgen_futures::spawn_local(async move {
+            set_task_photo_loading.set(true);
+            let func = js_sys::Reflect::get(&web_sys::window().unwrap(), &JsValue::from_str("captureDevPhoto")).unwrap();
+            let func = func.dyn_into::<js_sys::Function>().unwrap();
+            let args = js_sys::Array::new();
+            args.push(&JsValue::from_bool(is_camera));
+            args.push(&JsValue::from_str("Kegiatan"));
+            args.push(&JsValue::from_str(&date));
+            args.push(&JsValue::from_str(&time));
+            let promise = func.apply(&JsValue::NULL, &args).unwrap();
+            let promise = js_sys::Promise::from(promise);
+            match wasm_bindgen_futures::JsFuture::from(promise).await {
+                Ok(raw) => {
+                    if let Some(s) = raw.as_string() {
+                        set_task_photo.set(Some(s));
+                    }
+                }
+                Err(e) => {
+                    web_sys::console::warn_1(&e);
+                }
+            }
+            set_task_photo_loading.set(false);
+        });
+    };
+
 
     view! {
         <div style="background: #0f172a; min-height: 100%; color: white; display: flex; flex-direction: column;">
@@ -280,7 +357,7 @@ pub fn Dev() -> impl IntoView {
                             view! {
                                 <div style="padding: 12px 16px; background: #0f172a; border-bottom: 1px solid #1e293b; display: flex; gap: 8px; align-items: center;">
                                     <select
-                                        style="background: #1e293b; color: white; border: 1px solid #334155; padding: 6px 10px; border-radius: 6px; font-size: 13px;"
+                                        style="background-color: #1e293b; color: white; border: 1px solid #334155; padding: 6px 24px 6px 10px; border-radius: 6px; font-size: 13px; -webkit-appearance: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 12 12\"><path fill=\"%23ffffff\" d=\"M3 4l3 3 3-3z\"/></svg>'); background-repeat: no-repeat; background-position: right 8px center;"
                                         on:change=move |ev| {
                                             if let Ok(v) = event_target_value(&ev).parse::<u32>() {
                                                 set_filter_month.set(v);
@@ -289,7 +366,7 @@ pub fn Dev() -> impl IntoView {
                                     >
                                         {(1..=12).map(|m| {
                                             view! {
-                                                <option value=m selected=move || filter_month.get() == m>
+                                                <option value=m selected=move || filter_month.get() == m style="background: #1e293b; color: white;">
                                                     {match m {
                                                         1 => "Januari", 2 => "Februari", 3 => "Maret", 4 => "April",
                                                         5 => "Mei", 6 => "Juni", 7 => "Juli", 8 => "Agustus",
@@ -335,6 +412,8 @@ pub fn Dev() -> impl IntoView {
                                                     set_edit_att_is_new.set(true);
                                                     set_att_in_str.set(String::new());
                                                     set_att_out_str.set(String::new());
+                                                    set_att_photo_in.set(None);
+                                                    set_att_photo_out.set(None);
                                                     set_show_att_modal.set(true);
                                                 }
                                                 style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;"
@@ -371,6 +450,8 @@ pub fn Dev() -> impl IntoView {
                                                                 set_edit_att_is_new.set(false);
                                                                 set_att_in_str.set(att_clone.clock_in_time.clone().unwrap_or_default().chars().skip(11).take(5).collect::<String>());
                                                                 set_att_out_str.set(att_clone.clock_out_time.clone().unwrap_or_default().chars().skip(11).take(5).collect::<String>());
+                                                                set_att_photo_in.set(None);
+                                                                set_att_photo_out.set(None);
                                                                 set_show_att_modal.set(true);
                                                             }
                                                             style="background: #334155; color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px;"
@@ -408,6 +489,7 @@ pub fn Dev() -> impl IntoView {
                                                     set_edit_task.set(new_task);
                                                     set_edit_task_is_new.set(true);
                                                     set_task_time_str.set("08:00".to_string());
+                                                    set_task_photo.set(None);
                                                     set_show_task_modal.set(true);
                                                 }
                                                 style="background: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600; cursor: pointer;"
@@ -444,6 +526,7 @@ pub fn Dev() -> impl IntoView {
                                                                 set_edit_task.set(task_clone.clone());
                                                                 set_edit_task_is_new.set(false);
                                                                 set_task_time_str.set(task_clone.time.chars().take(5).collect::<String>());
+                                                                set_task_photo.set(None);
                                                                 set_show_task_modal.set(true);
                                                             }
                                                             style="background: #334155; color: white; border: none; border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px;"
@@ -573,13 +656,93 @@ pub fn Dev() -> impl IntoView {
 
                                         <div style="display: flex; flex-direction: column; gap: 4px;">
                                             <label style="font-size: 11px; color: #94a3b8;">"Status"</label>
-                                            <select style="background: #0f172a; color: white; border: 1px solid #334155; padding: 8px; border-radius: 6px;"
+                                            <select style="background-color: #0f172a; color: white; border: 1px solid #334155; padding: 8px 24px 8px 8px; border-radius: 6px; -webkit-appearance: none; appearance: none; background-image: url('data:image/svg+xml;charset=US-ASCII,<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"12\" height=\"12\" viewBox=\"0 0 12 12\"><path fill=\"%23ffffff\" d=\"M3 4l3 3 3-3z\"/></svg>'); background-repeat: no-repeat; background-position: right 10px center;"
                                                 on:change=move |ev| { let mut t = edit_att.get(); t.status = event_target_value(&ev); set_edit_att.set(t); }>
-                                                <option value="Selesai" selected=move || edit_att.get().status == "Selesai">"Selesai"</option>
-                                                <option value="Masuk" selected=move || edit_att.get().status == "Masuk">"Masuk"</option>
-                                                <option value="Libur" selected=move || edit_att.get().status == "Libur">"Libur"</option>
-                                                <option value="Cuti" selected=move || edit_att.get().status == "Cuti">"Cuti"</option>
+                                                <option value="Selesai" selected=move || edit_att.get().status == "Selesai" style="background: #0f172a; color: white;">"Selesai"</option>
+                                                <option value="Masuk" selected=move || edit_att.get().status == "Masuk" style="background: #0f172a; color: white;">"Masuk"</option>
+                                                <option value="Libur" selected=move || edit_att.get().status == "Libur" style="background: #0f172a; color: white;">"Libur"</option>
+                                                <option value="Cuti" selected=move || edit_att.get().status == "Cuti" style="background: #0f172a; color: white;">"Cuti"</option>
                                             </select>
+                                        </div>
+
+                                        // ── Foto Absensi ───────────────────────────────────────
+                                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                            // Foto Masuk
+                                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                <div style="font-size: 11px; color: #94a3b8; font-weight: 600;">"Foto Masuk"</div>
+                                                {move || if let Some(b64) = att_photo_in.get() {
+                                                    view! {
+                                                        <div style="position: relative;">
+                                                            <img
+                                                                src=format!("data:image/jpeg;base64,{}", b64)
+                                                                style="width: 100%; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #22c55e;"
+                                                                on:click=move |_| set_photo_preview.set(Some(att_photo_in.get().unwrap_or_default()))
+                                                            />
+                                                            <button
+                                                                on:click=move |_| set_att_photo_in.set(None)
+                                                                style="position: absolute; top: 2px; right: 2px; background: #7f1d1d; color: #fca5a5; border: none; border-radius: 4px; width: 20px; height: 20px; font-size: 10px; cursor: pointer; line-height: 20px;"
+                                                            >"✕"</button>
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    view! {
+                                                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                                                            <button
+                                                                on:click=move |_| capture_att_photo(true, true)
+                                                                disabled=move || att_photo_in_loading.get()
+                                                                style="background: #1e3a5f; color: #60a5fa; border: 1px solid #1d4ed8; border-radius: 6px; padding: 6px 4px; font-size: 11px; cursor: pointer;"
+                                                            >
+                                                                {move || if att_photo_in_loading.get() { "⏳" } else { "📷 Ambil" }}
+                                                            </button>
+                                                            <button
+                                                                on:click=move |_| capture_att_photo(false, true)
+                                                                disabled=move || att_photo_in_loading.get()
+                                                                style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; padding: 6px 4px; font-size: 11px; cursor: pointer;"
+                                                            >
+                                                                {move || if att_photo_in_loading.get() { "⏳" } else { "📁 Pilih" }}
+                                                            </button>
+                                                        </div>
+                                                    }.into_any()
+                                                }}
+                                            </div>
+                                            // Foto Pulang
+                                            <div style="display: flex; flex-direction: column; gap: 6px;">
+                                                <div style="font-size: 11px; color: #94a3b8; font-weight: 600;">"Foto Pulang"</div>
+                                                {move || if let Some(b64) = att_photo_out.get() {
+                                                    view! {
+                                                        <div style="position: relative;">
+                                                            <img
+                                                                src=format!("data:image/jpeg;base64,{}", b64)
+                                                                style="width: 100%; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #22c55e;"
+                                                                on:click=move |_| set_photo_preview.set(Some(att_photo_out.get().unwrap_or_default()))
+                                                            />
+                                                            <button
+                                                                on:click=move |_| set_att_photo_out.set(None)
+                                                                style="position: absolute; top: 2px; right: 2px; background: #7f1d1d; color: #fca5a5; border: none; border-radius: 4px; width: 20px; height: 20px; font-size: 10px; cursor: pointer; line-height: 20px;"
+                                                            >"✕"</button>
+                                                        </div>
+                                                    }.into_any()
+                                                } else {
+                                                    view! {
+                                                        <div style="display: flex; flex-direction: column; gap: 4px;">
+                                                            <button
+                                                                on:click=move |_| capture_att_photo(true, false)
+                                                                disabled=move || att_photo_out_loading.get()
+                                                                style="background: #1e3a5f; color: #60a5fa; border: 1px solid #1d4ed8; border-radius: 6px; padding: 6px 4px; font-size: 11px; cursor: pointer;"
+                                                            >
+                                                                {move || if att_photo_out_loading.get() { "⏳" } else { "📷 Ambil" }}
+                                                            </button>
+                                                            <button
+                                                                on:click=move |_| capture_att_photo(false, false)
+                                                                disabled=move || att_photo_out_loading.get()
+                                                                style="background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; padding: 6px 4px; font-size: 11px; cursor: pointer;"
+                                                            >
+                                                                {move || if att_photo_out_loading.get() { "⏳" } else { "📁 Pilih" }}
+                                                            </button>
+                                                        </div>
+                                                    }.into_any()
+                                                }}
+                                            </div>
                                         </div>
 
                                         <div style="display: flex; gap: 8px; margin-top: 8px;">
@@ -632,6 +795,45 @@ pub fn Dev() -> impl IntoView {
                                             <input type="text" style="background: #0f172a; color: white; border: 1px solid #334155; padding: 8px; border-radius: 6px;"
                                                 prop:value=move || edit_task.get().notes.unwrap_or_default()
                                                 on:input=move |ev| { let mut t = edit_task.get(); t.notes = Some(event_target_value(&ev)); set_edit_task.set(t); } />
+                                        </div>
+
+                                        // ── Foto Kegiatan ──────────────────────────────────────
+                                        <div>
+                                            <div style="font-size: 11px; color: #94a3b8; font-weight: 600; margin-bottom: 6px;">"Foto Kegiatan"</div>
+                                            {move || if let Some(b64) = task_photo.get() {
+                                                view! {
+                                                    <div style="position: relative; display: inline-block; width: 100%;">
+                                                        <img
+                                                            src=format!("data:image/jpeg;base64,{}", b64)
+                                                            style="width: 100%; height: 100px; object-fit: cover; border-radius: 6px; border: 1px solid #22c55e;"
+                                                            on:click=move |_| set_photo_preview.set(Some(task_photo.get().unwrap_or_default()))
+                                                        />
+                                                        <button
+                                                            on:click=move |_| set_task_photo.set(None)
+                                                            style="position: absolute; top: 4px; right: 4px; background: #7f1d1d; color: #fca5a5; border: none; border-radius: 4px; width: 22px; height: 22px; font-size: 11px; cursor: pointer; line-height: 22px;"
+                                                        >"✕"</button>
+                                                    </div>
+                                                }.into_any()
+                                            } else {
+                                                view! {
+                                                    <div style="display: flex; gap: 8px;">
+                                                        <button
+                                                            on:click=move |_| capture_task_photo_fn(true)
+                                                            disabled=move || task_photo_loading.get()
+                                                            style="flex: 1; background: #1e3a5f; color: #60a5fa; border: 1px solid #1d4ed8; border-radius: 6px; padding: 8px; font-size: 12px; cursor: pointer;"
+                                                        >
+                                                            {move || if task_photo_loading.get() { "⏳ Memproses..." } else { "📷 Ambil Foto" }}
+                                                        </button>
+                                                        <button
+                                                            on:click=move |_| capture_task_photo_fn(false)
+                                                            disabled=move || task_photo_loading.get()
+                                                            style="flex: 1; background: #1e293b; color: #94a3b8; border: 1px solid #334155; border-radius: 6px; padding: 8px; font-size: 12px; cursor: pointer;"
+                                                        >
+                                                            {move || if task_photo_loading.get() { "⏳ Memproses..." } else { "📁 Pilih Foto" }}
+                                                        </button>
+                                                    </div>
+                                                }.into_any()
+                                            }}
                                         </div>
 
                                         <div style="display: flex; gap: 8px; margin-top: 8px;">

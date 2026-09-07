@@ -75,6 +75,8 @@ pub async fn dev_upsert_attendance(
     date: String,
     clock_in_time: Option<String>,
     clock_out_time: Option<String>,
+    clock_in_photo: Option<String>,
+    clock_out_photo: Option<String>,
     status: String,
     db: State<'_, Mutex<Connection>>,
 ) -> Result<i64, String> {
@@ -82,17 +84,19 @@ pub async fn dev_upsert_attendance(
     if let Some(existing_id) = id {
         conn.execute(
             "UPDATE attendance_records
-             SET clock_in_time = ?1, clock_out_time = ?2, status = ?3
-             WHERE id = ?4",
-            (&clock_in_time, &clock_out_time, &status, existing_id),
+             SET clock_in_time = ?1, clock_out_time = ?2, status = ?3,
+                 clock_in_photo = COALESCE(?4, clock_in_photo),
+                 clock_out_photo = COALESCE(?5, clock_out_photo)
+             WHERE id = ?6",
+            (&clock_in_time, &clock_out_time, &status, &clock_in_photo, &clock_out_photo, existing_id),
         ).map_err(|e| format!("Gagal update absensi: {}", e))?;
         Ok(existing_id)
     } else {
         conn.execute(
             "INSERT OR REPLACE INTO attendance_records
-             (date, clock_in_time, clock_out_time, status)
-             VALUES (?1, ?2, ?3, ?4)",
-            (&date, &clock_in_time, &clock_out_time, &status),
+             (date, clock_in_time, clock_out_time, clock_in_photo, clock_out_photo, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            (&date, &clock_in_time, &clock_out_time, &clock_in_photo, &clock_out_photo, &status),
         ).map_err(|e| format!("Gagal buat absensi: {}", e))?;
         Ok(conn.last_insert_rowid())
     }
@@ -153,15 +157,17 @@ pub async fn dev_upsert_task(
     task_name: String,
     output: String,
     notes: Option<String>,
+    photo_path: Option<String>,
     db: State<'_, Mutex<Connection>>,
 ) -> Result<(), String> {
     let conn = db.lock().map_err(|e| e.to_string())?;
     if let Some(existing_id) = id {
         conn.execute(
             "UPDATE task_records
-             SET date = ?1, time = ?2, task_name = ?3, output = ?4, notes = ?5
-             WHERE id = ?6",
-            (&date, &time, &task_name, &output, &notes, existing_id),
+             SET date = ?1, time = ?2, task_name = ?3, output = ?4, notes = ?5,
+                 photo_path = COALESCE(?6, photo_path)
+             WHERE id = ?7",
+            (&date, &time, &task_name, &output, &notes, &photo_path, existing_id),
         ).map_err(|e| format!("Gagal update kegiatan: {}", e))?;
     } else {
         // Get or create attendance record for the given date
@@ -183,9 +189,9 @@ pub async fn dev_upsert_task(
         };
 
         conn.execute(
-            "INSERT INTO task_records (attendance_id, date, time, task_name, output, notes)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            (att_id, &date, &time, &task_name, &output, &notes),
+            "INSERT INTO task_records (attendance_id, date, time, task_name, output, notes, photo_path)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            (att_id, &date, &time, &task_name, &output, &notes, &photo_path),
         ).map_err(|e| format!("Gagal buat kegiatan: {}", e))?;
     }
     Ok(())

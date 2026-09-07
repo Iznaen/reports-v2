@@ -359,6 +359,104 @@
           });
       };
 
+      // Dev Mode photo capture: no GPS, watermark uses form date/time
+      window.captureDevPhoto = function(isCamera, badgeText, dateStr, timeStr) {
+          return new Promise((resolve, reject) => {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = 'image/*';
+              if (isCamera) input.capture = 'environment';
+
+              input.onchange = (e) => {
+                  const file = e.target.files[0];
+                  if (!file) { reject("Tidak ada foto yang dipilih"); return; }
+
+                  const img = new Image();
+                  img.onload = () => {
+                      const canvas = document.createElement('canvas');
+                      const targetWidth = 800;
+                      const targetHeight = 600;
+                      canvas.width = targetWidth;
+                      canvas.height = targetHeight;
+                      const ctx = canvas.getContext('2d');
+
+                      // Crop-fit image
+                      const imgRatio = img.width / img.height;
+                      const targetRatio = targetWidth / targetHeight;
+                      let drawWidth = img.width, drawHeight = img.height, offsetX = 0, offsetY = 0;
+                      if (imgRatio > targetRatio) {
+                          drawWidth = img.height * targetRatio;
+                          offsetX = (img.width - drawWidth) / 2;
+                      } else {
+                          drawHeight = img.width / targetRatio;
+                          offsetY = (img.height - drawHeight) / 2;
+                      }
+                      ctx.drawImage(img, offsetX, offsetY, drawWidth, drawHeight, 0, 0, targetWidth, targetHeight);
+
+                      // Parse date from form (YYYY-MM-DD)
+                      const hariIndo = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                      const bulanIndo = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+                      let hari = '-', tanggal = dateStr;
+                      if (dateStr && dateStr.length >= 10) {
+                          // Parse YYYY-MM-DD without timezone shift
+                          const parts = dateStr.split('-');
+                          const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+                          hari = hariIndo[d.getDay()];
+                          tanggal = d.getDate() + ' ' + bulanIndo[d.getMonth()] + ' ' + d.getFullYear();
+                      }
+
+                      // Top badge
+                      ctx.globalAlpha = 1.0;
+                      ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+                      ctx.beginPath();
+                      if (ctx.roundRect) { ctx.roundRect(20, 20, 220, 40, 8); }
+                      else { ctx.rect(20, 20, 220, 40); }
+                      ctx.fill();
+                      ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+                      ctx.stroke();
+
+                      ctx.fillStyle = "#ffffff";
+                      ctx.font = "bold 18px sans-serif";
+                      ctx.fillText(badgeText.toUpperCase(), 35, 47);
+
+                      // Bottom bar (date + time — no coordinates)
+                      ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
+                      ctx.beginPath();
+                      if (ctx.roundRect) { ctx.roundRect(20, targetHeight - 90, targetWidth - 40, 70, 10); }
+                      else { ctx.rect(20, targetHeight - 90, targetWidth - 40, 70); }
+                      ctx.fill();
+
+                      ctx.fillStyle = "#ffffff";
+                      ctx.font = "16px sans-serif";
+                      ctx.globalAlpha = 0.9;
+                      ctx.fillText(hari, 35, targetHeight - 65);
+
+                      ctx.font = "bold 16px sans-serif";
+                      ctx.globalAlpha = 1.0;
+                      ctx.fillText(tanggal, 35, targetHeight - 40);
+
+                      const tangWidth = ctx.measureText(tanggal).width;
+                      ctx.font = "16px sans-serif";
+                      ctx.globalAlpha = 0.8;
+                      ctx.fillText(timeStr || '', 35 + tangWidth + 15, targetHeight - 40);
+
+                      // DEV label (top-right corner)
+                      ctx.globalAlpha = 0.7;
+                      ctx.fillStyle = "#ef4444";
+                      ctx.font = "bold 12px monospace";
+                      ctx.fillText("[DEV]", targetWidth - 60, 40);
+
+                      ctx.globalAlpha = 1.0;
+                      const raw = canvas.toDataURL("image/jpeg", 0.8).split(',')[1];
+                      resolve(raw);
+                  };
+                  img.src = URL.createObjectURL(file);
+              };
+
+              input.click();
+          });
+      };
+
     </script>
   </head>
   <body></body>
